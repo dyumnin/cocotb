@@ -4,7 +4,6 @@
 # All rights reserved.
 
 CWD=$(shell pwd)
-COCOTB=$(CWD)/../../..
 
 TOPLEVEL_LANG ?=verilog
 
@@ -16,15 +15,22 @@ else
   $(error "A valid value (verilog or vhdl) was not provided for TOPLEVEL_LANG=$(TOPLEVEL_LANG)")
 endif
 
-TOPLEVEL=dff
-MODULE=$(TOPLEVEL)_cocotb
+TOPLEVEL = dff
+MODULE := $(TOPLEVEL)_cocotb
+COCOTB_HDL_TIMEPRECISION=1us
 
 CUSTOM_SIM_DEPS=$(CWD)/Makefile
 
-VSIM_ARGS=-t 1ps
+ifeq ($(SIM),questa)
+    SIM_ARGS=-t 1ps
+endif
 
-include $(COCOTB)/makefiles/Makefile.inc
-include $(COCOTB)/makefiles/Makefile.sim
+ifeq ($(SIM),$(filter $(SIM),ius xcelium))
+    SIM_ARGS += -v93
+endif
+
+include $(shell cocotb-config --makefiles)/Makefile.inc
+include $(shell cocotb-config --makefiles)/Makefile.sim
 
 # list all required Python files here
 sim: $(MODULE).py

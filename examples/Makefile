@@ -1,5 +1,5 @@
 ###############################################################################
-# Copyright (c) 2013 Potential Ventures Ltd
+# Copyright (c) 2013, 2018 Potential Ventures Ltd
 # Copyright (c) 2013 SolarFlare Communications Inc
 # All rights reserved.
 #
@@ -27,19 +27,25 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###############################################################################
 
-COCOTB?=$(shell pwd)/../
-export COCOTB
-
 EXAMPLES := adder/tests \
-	    endian_swapper/tests \
             axi_lite_slave/tests \
+            dff/tests \
+            endian_swapper/tests \
+            mean/tests \
+            mixed_language/tests
+# requires root permissions: ping_tun_tap/tests
 
 .PHONY: $(EXAMPLES)
 
+.PHONY: all
 all: $(EXAMPLES)
 
 $(EXAMPLES):
 	@cd $@ && $(MAKE)
 
+.PHONY: clean
 clean:
 	$(foreach TEST, $(EXAMPLES), $(MAKE) -C $(TEST) clean;)
+
+regression:
+	$(foreach TEST, $(EXAMPLES), $(MAKE) -C $(TEST) regression;)

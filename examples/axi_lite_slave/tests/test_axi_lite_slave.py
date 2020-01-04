@@ -11,85 +11,80 @@ from cocotb.triggers import Timer
 from cocotb.drivers.amba import AXI4LiteMaster
 from cocotb.drivers.amba import AXIProtocolError
 
-CLK_PERIOD = 10
+CLK_PERIOD_NS = 10
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), os.pardir, "hdl")
 MODULE_PATH = os.path.abspath(MODULE_PATH)
 
 def setup_dut(dut):
-    cocotb.fork(Clock(dut.clk, CLK_PERIOD).start())
+    cocotb.fork(Clock(dut.clk, CLK_PERIOD_NS, units='ns').start())
 
-#Write to address 0 and verify that value got through
+# Write to address 0 and verify that value got through
 @cocotb.test(skip = False)
 def write_address_0(dut):
-    """
-    Description:
-        Write to the register at address 0
-        verify the value has changed
+    """Write to the register at address 0, verify the value has changed.
 
     Test ID: 0
 
     Expected Results:
         The value read directly from the register is the same as the
-        value written
+        value written.
     """
 
-    #Reset
+    # Reset
     dut.rst <=  1
     dut.test_id <= 0
     axim = AXI4LiteMaster(dut, "AXIML", dut.clk)
     setup_dut(dut)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
     dut.rst <= 0
 
     ADDRESS = 0x00
     DATA = 0xAB
 
     yield axim.write(ADDRESS, DATA)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
 
     value = dut.dut.r_temp_0
     if value != DATA:
-        #Fail
+        # Fail
         raise TestFailure("Register at address 0x%08X should have been: \
                            0x%08X but was 0x%08X" % (ADDRESS, DATA, int(value)))
 
-    dut.log.info("Write 0x%08X to addres 0x%08X" % (int(value), ADDRESS))
+    dut.log.info("Write 0x%08X to address 0x%08X" % (int(value), ADDRESS))
 
 
-#Read back a value at address 0x01
+# Read back a value at address 0x01
 @cocotb.test(skip = False)
 def read_address_1(dut):
-    """
-    Description
-        Use cocotb to set the value of the register at address 0x01
-        Use AXIML to read the contents of that register and
-        compare the values
+    """Use cocotb to set the value of the register at address 0x01.
+    Use AXIML to read the contents of that register and
+    compare the values.
 
     Test ID: 1
 
     Expected Results:
-        The value read from the register is the same as the value written
+        The value read from the register is the same as the value written.
     """
-    #Reset
+    # Reset
     dut.rst <=  1
     dut.test_id <= 1
     axim = AXI4LiteMaster(dut, "AXIML", dut.clk)
     setup_dut(dut)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
     dut.rst <= 0
-    yield Timer(CLK_PERIOD)
+    yield Timer(CLK_PERIOD_NS, units='ns')
     ADDRESS = 0x01
     DATA = 0xCD
 
     dut.dut.r_temp_1 <= DATA
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
 
     value = yield axim.read(ADDRESS)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
 
     if value != DATA:
-        #Fail
+        # Fail
         raise TestFailure("Register at address 0x%08X should have been: \
                            0x%08X but was 0x%08X" % (ADDRESS, DATA, int(value)))
 
@@ -99,63 +94,59 @@ def read_address_1(dut):
 
 @cocotb.test(skip = False)
 def write_and_read(dut):
-    """
-    Description:
-        Write to the register at address 0
-        read back from that register and verify the value is the same
+    """Write to the register at address 0.
+    Read back from that register and verify the value is the same.
 
     Test ID: 2
 
     Expected Results:
-        The contents of the register is the same as the value written
+        The contents of the register is the same as the value written.
     """
 
-    #Reset
+    # Reset
     dut.rst <=  1
     dut.test_id <= 2
     axim = AXI4LiteMaster(dut, "AXIML", dut.clk)
     setup_dut(dut)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
     dut.rst <= 0
 
     ADDRESS = 0x00
     DATA = 0xAB
 
-    #Write to the register
+    # Write to the register
     yield axim.write(ADDRESS, DATA)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
 
-    #Read back the value
+    # Read back the value
     value = yield axim.read(ADDRESS)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
 
     value = dut.dut.r_temp_0
     if value != DATA:
-        #Fail
+        # Fail
         raise TestFailure("Register at address 0x%08X should have been: \
                            0x%08X but was 0x%08X" % (ADDRESS, DATA, int(value)))
 
-    dut._log.info("Write 0x%08X to addres 0x%08X" % (int(value), ADDRESS))
+    dut._log.info("Write 0x%08X to address 0x%08X" % (int(value), ADDRESS))
 
-@cocotb.test(skip = False, expect_error=True)
+@cocotb.test(skip = False)
 def write_fail(dut):
-    """
-    Description:
-        Attemp to write data to an address that doesn't exist. This test
-        should fail
+    """Attempt to write data to an address that doesn't exist. This test
+    should fail.
 
     Test ID: 3
 
     Expected Results:
         The AXIML bus should throw an exception because the user attempted
-        to write to an invalid address
+        to write to an invalid address.
     """
-    #Reset
+    # Reset
     dut.rst <=  1
     dut.test_id <= 3
     axim = AXI4LiteMaster(dut, "AXIML", dut.clk)
     setup_dut(dut)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
     dut.rst <= 0
 
     ADDRESS = 0x02
@@ -163,33 +154,31 @@ def write_fail(dut):
 
     try:
         yield axim.write(ADDRESS, DATA)
-        yield Timer(CLK_PERIOD * 10)
+        yield Timer(CLK_PERIOD_NS * 10, units='ns')
     except AXIProtocolError as e:
         print("Exception: %s" % str(e))
-        dut._log.info("Bus Successfully Raised an Error")
+        dut._log.info("Bus successfully raised an error")
         raise TestSuccess()
-    raise TestFailure("AXI Bus Should have raised an ERROR when writing to \
-                        the wrong bus")
+    raise TestFailure("AXI bus should have raised an error when writing to \
+                        an invalid address")
 
-@cocotb.test(skip = False, expect_error=True)
+@cocotb.test(skip = False)
 def read_fail(dut):
-    """
-    Description:
-        Attemp to write data to an address that doesn't exist. This test
-        should fail
+    """Attempt to read data from an address that doesn't exist. This test
+    should fail.
 
     Test ID: 4
 
     Expected Results:
         The AXIML bus should throw an exception because the user attempted
-        to write to an invalid address
+        to read from an invalid address.
     """
-    #Reset
-    dut.rst <=  1
+    # Reset
+    dut.rst <= 1
     dut.test_id <= 4
     axim = AXI4LiteMaster(dut, "AXIML", dut.clk)
     setup_dut(dut)
-    yield Timer(CLK_PERIOD * 10)
+    yield Timer(CLK_PERIOD_NS * 10, units='ns')
     dut.rst <= 0
 
     ADDRESS = 0x02
@@ -197,10 +186,10 @@ def read_fail(dut):
 
     try:
         yield axim.read(ADDRESS, DATA)
-        yield Timer(CLK_PERIOD * 10)
+        yield Timer(CLK_PERIOD_NS * 10, units='ns')
     except AXIProtocolError as e:
         print("Exception: %s" % str(e))
         dut._log.info("Bus Successfully Raised an Error")
         raise TestSuccess()
-    raise TestFailure("AXI Bus Should have raised an ERROR when writing to \
-                        the wrong bus")
+    raise TestFailure("AXI bus should have raised an error when reading from \
+                        an invalid address")
