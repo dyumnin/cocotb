@@ -149,6 +149,12 @@ Environment Variables
     If defined, log lines displayed in the terminal will be shorter. It will print only
     time, message type (``INFO``, ``WARNING``, ``ERROR``, ...) and the log message itself.
 
+.. envvar:: COCOTB_FILE_LOGGER
+
+    If defined, A log file named results.log is generated. The folder in which
+    the log file is generated can be controlled by setting the ``RESULT_PATH``
+    environment variable to the appropriate folder.
+
 .. envvar:: MODULE
 
     The name of the module(s) to search for test functions.  Multiple modules can be specified using a comma-separated list.
