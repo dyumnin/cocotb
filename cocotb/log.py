@@ -62,10 +62,8 @@ class SimBaseLog(logging.getLoggerClass()):
 
         if want_color_output():
             hdlr.setFormatter(SimColourLogFormatter())
-            self.colour = True
         else:
             hdlr.setFormatter(SimLogFormatter())
-            self.colour = False
 
         self.propagate = False
         self.addHandler(hdlr)
@@ -79,31 +77,21 @@ class SimBaseLog(logging.getLoggerClass()):
             file_handler.setFormatter(SimLogFormatter())
             self.addHandler(file_handler)
 
-    def _logFromC(self, level, filename, lineno, msg, function):
-        """
-        This is for use from the C world, and allows us to insert C stack
-        information.
-        """
-        if self.isEnabledFor(level):
-            record = self.makeRecord(
-                self.name,
-                level,
-                filename,
-                lineno,
-                msg,
-                None,
-                None,
-                function
-            )
-            self.handle(record)
-
     @property
     def logger(self):
         warnings.warn(
             "the .logger attribute should not be used now that `SimLog` "
             "returns a native logger instance directly.",
-            DeprecationWarning)
+            DeprecationWarning, stacklevel=2)
         return self
+
+    @property
+    def colour(self):
+        warnings.warn(
+            "the .colour attribute may be removed in future, use the "
+            "equivalent `cocotb.utils.want_color_output()` instead",
+            DeprecationWarning, stacklevel=2)
+        return want_color_output()
 
 
 # this used to be a class, hence the unusual capitalization
@@ -195,3 +183,27 @@ class SimColourLogFormatter(SimLogFormatter):
                  record.levelname.ljust(_LEVEL_CHARS))
 
         return self._format(level, record, msg, coloured=True)
+
+
+def _filter_from_c(logger_name, level):
+    return logging.getLogger(logger_name).isEnabledFor(level)
+
+
+def _log_from_c(logger_name, level, filename, lineno, msg, function_name):
+    """
+    This is for use from the C world, and allows us to insert C stack
+    information.
+    """
+    logger = logging.getLogger(logger_name)
+    if logger.isEnabledFor(level):
+        record = logger.makeRecord(
+            logger.name,
+            level,
+            filename,
+            lineno,
+            msg,
+            None,
+            None,
+            function_name
+        )
+        logger.handle(record)

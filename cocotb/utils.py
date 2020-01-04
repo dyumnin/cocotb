@@ -104,7 +104,7 @@ def get_sim_steps(time, units=None):
     """Calculates the number of simulation time steps for a given amount of *time*.
 
     Args:
-        time (numbers.Number):  The value to convert to simulation time steps.
+        time (numbers.Real or decimal.Decimal):  The value to convert to simulation time steps.
         units (str or None, optional):  String specifying the units of the result
             (one of ``None``, ``'fs'``, ``'ps'``, ``'ns'``, ``'us'``, ``'ms'``, ``'sec'``).
             ``None`` means time is already in simulation time steps.
@@ -494,7 +494,10 @@ class lazy_property(object):
 
 
 def want_color_output():
-    """Return ``True`` if colored output is possible/requested and not running in GUI."""
+    """Return ``True`` if colored output is possible/requested and not running in GUI.
+    
+    Colored output can be explicitly requested by setting :envvar:`COCOTB_ANSI_OUTPUT` to  ``1``.
+    """
     want_color = sys.stdout.isatty()  # default to color for TTYs
     if os.getenv("COCOTB_ANSI_OUTPUT", default='0') == '1':
         want_color = True

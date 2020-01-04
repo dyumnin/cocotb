@@ -70,6 +70,11 @@ classes used within ``cocotb``.
     :members:
     :member-order: bysource
 
+.. autoclass:: Waitable
+    :members:
+    :member-order: bysource
+    :private-members:
+
 Testbench Structure
 ===================
 
@@ -140,6 +145,8 @@ Clock
 Utilities
 =========
 
+.. autodata:: cocotb.plusargs
+
 .. automodule:: cocotb.utils
     :members:
     :member-order: bysource
@@ -147,6 +154,9 @@ Utilities
 
 Simulation Object Handles
 =========================
+
+.. inheritance-diagram:: cocotb.handle
+   :parts: 1
 
 .. currentmodule:: cocotb.handle
 
