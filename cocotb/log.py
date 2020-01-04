@@ -1,29 +1,29 @@
-''' Copyright (c) 2013, 2018 Potential Ventures Ltd
-Copyright (c) 2013 SolarFlare Communications Inc
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-    * Neither the name of Potential Ventures Ltd,
-      SolarFlare Communications Inc nor the
-      names of its contributors may be used to endorse or promote products
-      derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL POTENTIAL VENTURES LTD BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. '''
+# Copyright (c) 2013, 2018 Potential Ventures Ltd
+# Copyright (c) 2013 SolarFlare Communications Inc
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Potential Ventures Ltd,
+#       SolarFlare Communications Inc nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL POTENTIAL VENTURES LTD BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """
 Everything related to logging
@@ -34,7 +34,7 @@ import sys
 import logging
 import warnings
 
-from cocotb.utils import get_sim_time
+from cocotb.utils import get_sim_time, want_color_output
 
 import cocotb.ANSI as ANSI
 
@@ -57,46 +57,30 @@ class SimBaseLog(logging.getLoggerClass()):
 
         # customizations of the defaults
         hdlr = logging.StreamHandler(sys.stdout)
-        want_ansi = os.getenv("COCOTB_ANSI_OUTPUT") and not os.getenv("GUI")
-        if want_ansi is None:
-            want_ansi = sys.stdout.isatty()  # default to ANSI for TTYs
-        else:
-            want_ansi = want_ansi == '1'
-        if want_ansi:
+
+        if want_color_output():
             hdlr.setFormatter(SimColourLogFormatter())
-            self.colour = True
         else:
             hdlr.setFormatter(SimLogFormatter())
-            self.colour = False
 
         self.propagate = False
         self.addHandler(hdlr)
-
-    def _logFromC(self, level, filename, lineno, msg, function):
-        """
-        This is for use from the C world, and allows us to insert C stack
-        information.
-        """
-        if self.isEnabledFor(level):
-            record = self.makeRecord(
-                self.name,
-                level,
-                filename,
-                lineno,
-                msg,
-                None,
-                None,
-                function
-            )
-            self.handle(record)
 
     @property
     def logger(self):
         warnings.warn(
             "the .logger attribute should not be used now that `SimLog` "
             "returns a native logger instance directly.",
-            DeprecationWarning)
+            DeprecationWarning, stacklevel=2)
         return self
+
+    @property
+    def colour(self):
+        warnings.warn(
+            "the .colour attribute may be removed in future, use the "
+            "equivalent `cocotb.utils.want_color_output()` instead",
+            DeprecationWarning, stacklevel=2)
+        return want_color_output()
 
 
 # this used to be a class, hence the unusual capitalization
@@ -164,8 +148,8 @@ class SimLogFormatter(logging.Formatter):
 
 
 class SimColourLogFormatter(SimLogFormatter):
-
     """Log formatter to provide consistent log message handling."""
+    
     loglevel2colour = {
         logging.DEBUG   :       "%s",
         logging.INFO    :       ANSI.COLOR_INFO + "%s" + ANSI.COLOR_DEFAULT,
@@ -188,3 +172,27 @@ class SimColourLogFormatter(SimLogFormatter):
                  record.levelname.ljust(_LEVEL_CHARS))
 
         return self._format(level, record, msg, coloured=True)
+
+
+def _filter_from_c(logger_name, level):
+    return logging.getLogger(logger_name).isEnabledFor(level)
+
+
+def _log_from_c(logger_name, level, filename, lineno, msg, function_name):
+    """
+    This is for use from the C world, and allows us to insert C stack
+    information.
+    """
+    logger = logging.getLogger(logger_name)
+    if logger.isEnabledFor(level):
+        record = logger.makeRecord(
+            logger.name,
+            level,
+            filename,
+            lineno,
+            msg,
+            None,
+            None,
+            function_name
+        )
+        logger.handle(record)

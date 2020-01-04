@@ -31,6 +31,11 @@
 
 import ctypes
 import warnings
+import sys
+if sys.version_info.major < 3:
+    import collections as collections_abc
+else:
+    import collections.abc as collections_abc
 
 import os
 
@@ -43,7 +48,7 @@ import cocotb
 from cocotb.binary import BinaryValue
 from cocotb.log import SimLog
 from cocotb.result import TestError
-from cocotb.utils import integer_types
+from cocotb import _py_compat
 
 # Only issue a warning for each deprecated attribute access
 _deprecation_warned = {}
@@ -67,9 +72,11 @@ class SimHandleBase(object):
 
     def __init__(self, handle, path):
         """
+        .. Constructor. This RST comment works around sphinx-doc/sphinx#6885
+
         Args:
-            handle (integer)    : the GPI handle to the simulator object
-            path (string)       : path to this handle, None if root
+            handle (int): The GPI handle to the simulator object.
+            path (str): Path to this handle, ``None`` if root.
         """
         self._handle = handle
         self._len = None
@@ -104,15 +111,21 @@ class SimHandleBase(object):
         return self._len
 
     def __eq__(self, other):
+        """Equality comparator for handles
 
-        # Permits comparison of handles i.e. if clk == dut.clk
-        if isinstance(other, SimHandleBase):
-            if self._handle == other._handle:
-                return 0
-            return 1
+        Example usage::
+
+            if clk == dut.clk:
+                do_something()
+        """
+        if not isinstance(other, SimHandleBase):
+            return NotImplemented
+        return self._handle == other._handle
 
     def __ne__(self, other):
-        return not self.__eq__(other)
+        if not isinstance(other, SimHandleBase):
+            return NotImplemented
+        return self._handle != other._handle
 
     def __repr__(self):
         desc = self._path
@@ -130,7 +143,7 @@ class SimHandleBase(object):
     def __setattr__(self, name, value):
         if name in self._compat_mapping:
             if name not in _deprecation_warned:
-                warnings.warn("Use of %s attribute is deprecated" % name)
+                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]))
                 _deprecation_warned[name] = True
             return setattr(self, self._compat_mapping[name], value)
         else:
@@ -139,38 +152,39 @@ class SimHandleBase(object):
     def __getattr__(self, name):
         if name in self._compat_mapping:
             if name not in _deprecation_warned:
-                warnings.warn("Use of %s attribute is deprecated" % name)
+                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]))
                 _deprecation_warned[name] = True
             return getattr(self, self._compat_mapping[name])
         else:
-            return object.__getattr__(self, name)
+            return object.__getattribute__(self, name)
+
 
 class RegionObject(SimHandleBase):
-    """Region objects don't have values, they are effectively scopes or namespaces."""
+    """A region object, such as a scope or namespace.
+
+    Region objects don't have values, they are effectively scopes or namespaces.
+    """
     def __init__(self, handle, path):
         SimHandleBase.__init__(self, handle, path)
         self._discovered = False
 
     def __iter__(self):
         """Iterate over all known objects in this layer of hierarchy."""
-        try:
-            if not self._discovered:
-                self._discover_all()
+        if not self._discovered:
+            self._discover_all()
 
-            for name, handle in self._sub_handles.items():
-                if isinstance(handle, list):
-                    self._log.debug("Found index list length %d", len(handle))
-                    for subindex, subhdl in enumerate(handle):
-                        if subhdl is None:
-                            self._log.warning("Index %d doesn't exist in %s.%s", subindex, self._name, name)
-                            continue
-                        self._log.debug("Yielding index %d from %s (%s)", subindex, name, type(subhdl))
-                        yield subhdl
-                else:
-                    self._log.debug("Yielding %s (%s)", name, handle)
-                    yield handle
-        except GeneratorExit:
-            pass
+        for name, handle in self._sub_handles.items():
+            if isinstance(handle, list):
+                self._log.debug("Found index list length %d", len(handle))
+                for subindex, subhdl in enumerate(handle):
+                    if subhdl is None:
+                        self._log.warning("Index %d doesn't exist in %s.%s", subindex, self._name, name)
+                        continue
+                    self._log.debug("Yielding index %d from %s (%s)", subindex, name, type(subhdl))
+                    yield subhdl
+            else:
+                self._log.debug("Yielding %s (%s)", name, handle)
+                yield handle
 
     def _discover_all(self):
         """When iterating or performing tab completion, we run through ahead of
@@ -206,7 +220,7 @@ class RegionObject(SimHandleBase):
         self._discovered = True
 
     def _child_path(self, name):
-        """Returns a string of the path of the child :any:`SimHandle` for a given name."""
+        """Returns a string of the path of the child :any:`SimHandle` for a given *name*."""
         return self._path + "." + name
 
     def _sub_handle_key(self, name):
@@ -360,9 +374,9 @@ class HierarchyArrayObject(RegionObject):
         raise TypeError("Not permissible to set %s at index %d" % (self._name, index))
 
 
-class AssignmentResult(object):
+class _AssignmentResult(object):
     """
-    Object that exists solely to provide an error message if the caller
+    An object that exists solely to provide an error message if the caller
     is not aware of cocotb's meaning of ``<=``.
     """
     def __init__(self, signal, value):
@@ -377,15 +391,12 @@ class AssignmentResult(object):
             .format(self)
         )
 
-    # python 2
+    # Python 2
     __nonzero__ = __bool__
 
 
 class NonHierarchyObject(SimHandleBase):
     """Common base class for all non-hierarchy objects."""
-
-    def __init__(self, handle, path):
-        SimHandleBase.__init__(self, handle, path)
 
     def __iter__(self):
         return iter(())
@@ -398,34 +409,38 @@ class NonHierarchyObject(SimHandleBase):
                 result.append(self[x]._getvalue())
             return result
         else:
-            raise TypeError("Not permissible to get values on object %s type %s" % (self._name, type(self)))
+            raise TypeError("Not permissible to get values of object %s of type %s" % (self._name, type(self)))
 
     def setimmediatevalue(self, value):
-        raise TypeError("Not permissible to set values on object %s type %s" % (self._name, type(self)))
+        raise TypeError("Not permissible to set values on object %s of type %s" % (self._name, type(self)))
 
     def _setcachedvalue(self, value):
-        raise TypeError("Not permissible to set values on object %s type %s" % (self._name, type(self)))
+        raise TypeError("Not permissible to set values on object %s of type %s" % (self._name, type(self)))
 
     def __le__(self, value):
-        """Overload the less than or equal to operator to
-            provide an hdl-like shortcut
-                module.signal <= 2
+        """Overload less-than-or-equal-to operator to provide an HDL-like shortcut.
+
+        Example:
+        >>> module.signal <= 2
         """
         self.value = value
-        return AssignmentResult(self, value)
+        return _AssignmentResult(self, value)
 
     def __eq__(self, other):
-        if isinstance(other, SimHandleBase):
-            if self._handle == other._handle:
-                return 0
-            return 1
+        """Equality comparator for non-hierarchy objects
 
-        # Use the comparison method of the other object against our value
+        If ``other`` is not a :class:`SimHandleBase` instance the comparision
+        uses the comparison method of the ``other`` object against our
+        ``.value``.
+        """
+        if isinstance(other, SimHandleBase):
+            return SimHandleBase.__eq__(self, other)
         return self.value == other
 
     def __ne__(self, other):
-        return not self.__eq__(other)
-
+        if isinstance(other, SimHandleBase):
+            return SimHandleBase.__ne__(self, other)
+        return self.value != other
 
     # We want to maintain compatibility with python 2.5 so we can't use @property with a setter
     value = property(fget=lambda self: self._getvalue(),
@@ -437,13 +452,22 @@ class NonHierarchyObject(SimHandleBase):
     def __hash__(self):
         return SimHandleBase.__hash__(self)
 
-class ConstantObject(NonHierarchyObject):
-    """Constant objects have a value that can be read, but not set.
 
-    We can also cache the value since it is elaboration time fixed and won't
-    change within a simulation.
+class ConstantObject(NonHierarchyObject):
+    """An object which has a value that can be read, but not set.
+
+    We can also cache the value since it is fixed at elaboration time and
+    won't change within a simulation.
     """
     def __init__(self, handle, path, handle_type):
+        """
+        Args:
+            handle (int): The GPI handle to the simulator object.
+            path (str): Path to this handle, ``None`` if root.
+            handle_type: The type of the handle
+                (``simulator.INTEGER``, ``simulator.ENUM``,
+                ``simulator.REAL``, ``simulator.STRING``).
+        """
         NonHierarchyObject.__init__(self, handle, path)
         if handle_type in [simulator.INTEGER, simulator.ENUM]:
             self._value = simulator.get_signal_val_long(self._handle)
@@ -471,11 +495,10 @@ class ConstantObject(NonHierarchyObject):
     def __str__(self):
         return str(self.value)
 
+
 class NonHierarchyIndexableObject(NonHierarchyObject):
+    """ A non-hierarchy indexable object. """
     def __init__(self, handle, path):
-        """Args:
-            handle (int): FLI/VPI/VHPI handle to the simulator object.
-        """
         NonHierarchyObject.__init__(self, handle, path)
         self._range = simulator.get_range(self._handle)
 
@@ -506,69 +529,60 @@ class NonHierarchyIndexableObject(NonHierarchyObject):
         return self._sub_handles[index]
 
     def __iter__(self):
-        try:
-            if self._range is None:
-                return
+        if self._range is None:
+            return
 
-            self._log.debug("Iterating with range [%d:%d]", self._range[0], self._range[1])
-            for i in self._range_iter(self._range[0], self._range[1]):
-                try:
-                    result = self[i]
-                    yield result
-                except IndexError:
-                    continue
-        except GeneratorExit:
-            pass
-
+        self._log.debug("Iterating with range [%d:%d]", self._range[0], self._range[1])
+        for i in self._range_iter(self._range[0], self._range[1]):
+            try:
+                result = self[i]
+                yield result
+            except IndexError:
+                continue
 
     def _range_iter(self, left, right):
-        try:
-            if left > right:
-                while left >= right:
-                    yield left
-                    left = left - 1
-            else:
-                while left <= right:
-                    yield left
-                    left = left + 1
-        except GeneratorExit:
-            pass
+        if left > right:
+            while left >= right:
+                yield left
+                left = left - 1
+        else:
+            while left <= right:
+                yield left
+                left = left + 1
+
+
+class _SimIterator(collections_abc.Iterator):
+    """Iterator over simulator objects. For internal use only."""
+
+    def __init__(self, handle, mode):
+        self._iter = simulator.iterate(handle, mode)
+
+    def __next__(self):
+        return simulator.next(self._iter)
+
+    if sys.version_info.major < 3:
+        next = __next__
+
+
 
 class NonConstantObject(NonHierarchyIndexableObject):
+    """ A non-constant object"""
     # FIXME: what is the difference to ModifiableObject? Explain in docstring.
-
-    def __init__(self, handle, path):
-        """Args:
-            handle (int): FLI/VPI/VHPI handle to the simulator object.
-        """
-        NonHierarchyIndexableObject.__init__(self, handle, path)
 
     def drivers(self):
         """An iterator for gathering all drivers for a signal."""
-        try:
-            iterator = simulator.iterate(self._handle, simulator.DRIVERS)
-            while True:
-                # Path is left as the default None since handles are not derived from the hierarchy
-                yield SimHandle(simulator.next(iterator))
-        except GeneratorExit:
-            pass
+        return _SimIterator(self._handle, simulator.DRIVERS)
 
     def loads(self):
         """An iterator for gathering all loads on a signal."""
-        try:
-            iterator = simulator.iterate(self._handle, simulator.LOADS)
-            while True:
-                # Path is left as the default None since handles are not derived from the hierarchy
-                yield SimHandle(simulator.next(iterator))
-        except GeneratorExit:
-            pass
+        return _SimIterator(self._handle, simulator.LOADS)
 
 
 class ModifiableObject(NonConstantObject):
     """Base class for simulator objects whose values can be modified."""
 
     def setimmediatevalue(self, value):
-        """Set the value of the underlying simulation object to value.
+        """Set the value of the underlying simulation object to *value*.
 
         This operation will fail unless the handle refers to a modifiable
         object, e.g. net, signal or variable.
@@ -584,13 +598,13 @@ class ModifiableObject(NonConstantObject):
             TypeError: If target is not wide enough or has an unsupported type
                  for value assignment.
         """
-        if isinstance(value, integer_types) and value < 0x7fffffff and len(self) <= 32:
+        if isinstance(value, _py_compat.integer_types) and value < 0x7fffffff and len(self) <= 32:
             simulator.set_signal_val_long(self._handle, value)
             return
 
         if isinstance(value, ctypes.Structure):
             value = BinaryValue(value=cocotb.utils.pack(value), n_bits=len(self))
-        elif isinstance(value, integer_types):
+        elif isinstance(value, _py_compat.integer_types):
             value = BinaryValue(value=value, n_bits=len(self), bigEndian=False)
         elif isinstance(value, dict):
             # We're given a dictionary with a list of values and a bit size...
@@ -633,6 +647,7 @@ class ModifiableObject(NonConstantObject):
     def __str__(self):
         return str(self.value)
 
+
 class RealObject(ModifiableObject):
     """Specific object handle for Real signals and variables."""
 
@@ -661,11 +676,12 @@ class RealObject(ModifiableObject):
     def __float__(self):
         return float(self.value)
 
+
 class EnumObject(ModifiableObject):
     """Specific object handle for enumeration signals and variables."""
 
     def setimmediatevalue(self, value):
-        """Set the value of the underlying simulation object to value.
+        """Set the value of the underlying simulation object to *value*.
 
         This operation will fail unless the handle refers to a modifiable
         object, e.g. net, signal or variable.
@@ -679,7 +695,7 @@ class EnumObject(ModifiableObject):
         """
         if isinstance(value, BinaryValue):
             value = int(value)
-        elif not isinstance(value, integer_types):
+        elif not isinstance(value, _py_compat.integer_types):
             self._log.critical("Unsupported type for integer value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
@@ -693,7 +709,7 @@ class IntegerObject(ModifiableObject):
     """Specific object handle for Integer and Enum signals and variables."""
 
     def setimmediatevalue(self, value):
-        """Set the value of the underlying simulation object to value.
+        """Set the value of the underlying simulation object to *value*.
 
         This operation will fail unless the handle refers to a modifiable
         object, e.g. net, signal or variable.
@@ -707,7 +723,7 @@ class IntegerObject(ModifiableObject):
         """
         if isinstance(value, BinaryValue):
             value = int(value)
-        elif not isinstance(value, integer_types):
+        elif not isinstance(value, _py_compat.integer_types):
             self._log.critical("Unsupported type for integer value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
@@ -716,11 +732,12 @@ class IntegerObject(ModifiableObject):
     def _getvalue(self):
         return simulator.get_signal_val_long(self._handle)
 
+
 class StringObject(ModifiableObject):
     """Specific object handle for String variables."""
 
     def setimmediatevalue(self, value):
-        """Set the value of the underlying simulation object to value.
+        """Set the value of the underlying simulation object to *value*.
 
         This operation will fail unless the handle refers to a modifiable
         object, e.g. net, signal or variable.
@@ -744,7 +761,18 @@ class StringObject(ModifiableObject):
 _handle2obj = {}
 
 def SimHandle(handle, path=None):
-    """Factory function to create the correct type of :any:`SimHandle` object."""
+    """Factory function to create the correct type of `SimHandle` object.
+
+    Args:
+        handle (int): The GPI handle to the simulator object.
+        path (str): Path to this handle, ``None`` if root.
+
+    Returns:
+        The `SimHandle` object.
+
+    Raises:
+        TestError: If no matching object for GPI type could be found.
+    """
     _type2cls = {
         simulator.MODULE:      HierarchyObject,
         simulator.STRUCTURE:   HierarchyObject,
