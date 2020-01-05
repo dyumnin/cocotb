@@ -74,6 +74,14 @@ class SimBaseLog(logging.getLoggerClass()):
         logging.__init__(name)
         self.addHandler(hdlr)
         self.setLevel(logging.NOTSET)
+        want_filelogger=os.getenv("COCOTB_FILE_LOGGER")
+        if want_filelogger is not None:
+            logfile=os.path.join(os.getenv("RESULT_PATH"),"results.log")
+            file_handler = RotatingFileHandler(
+                logfile, maxBytes=(1048576*5), backupCount=4
+                                                                    )
+            file_handler.setFormatter(SimLogFormatter())
+            self.addHandler(file_handler)
 
 """ Need to play with this to get the path of the called back,
     construct our own makeRecord for this """
