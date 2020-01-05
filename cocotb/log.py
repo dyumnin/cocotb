@@ -34,6 +34,8 @@ import sys
 import logging
 import inspect
 
+
+from logging.handlers import RotatingFileHandler
 from cocotb.utils import get_sim_time
 
 import cocotb.ANSI as ANSI
