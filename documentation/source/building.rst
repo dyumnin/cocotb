@@ -31,7 +31,7 @@ Make Variables
 
 .. make:var:: SIM
 
-      Selects which simulator Makefile to use.  Attempts to include a simulator specific makefile from :file:`cocotb/share/makefiles/makefile.$(SIM)`
+      Selects which simulator Makefile to use.  Attempts to include a simulator specific makefile from :file:`cocotb/share/makefiles/simulators/makefile.$(SIM)`
 
 .. make:var:: WAVES
 
@@ -64,9 +64,9 @@ Make Variables
 
 .. make:var:: PLUSARGS
 
-      "Plusargs" are options that are starting with a plus (``+``) sign. 
+      "Plusargs" are options that are starting with a plus (``+``) sign.
       They are passed to the simulator and are also available within cocotb as :data:`cocotb.plusargs`.
-      In the simulator, they can be read by the Verilog/SystemVerilog system functions 
+      In the simulator, they can be read by the Verilog/SystemVerilog system functions
       ``$test$plusargs`` and ``$value$plusargs``.
 
       The special plusargs ``+ntb_random_seed`` and ``+seed``, if present, are evaluated
@@ -148,6 +148,10 @@ Environment Variables
 
     If defined, log lines displayed in the terminal will be shorter. It will print only
     time, message type (``INFO``, ``WARNING``, ``ERROR``, ...) and the log message itself.
+
+.. envvar:: COCOTB_PDB_ON_EXCEPTION
+
+   If defined, cocotb will drop into the Python debugger (:mod:`pdb`) if a test fails with an exception.
 
 .. envvar:: MODULE
 
@@ -235,6 +239,6 @@ Additional Environment Variables
 
 .. envvar:: COCOTB_SHARE_DIR
 
-    Path to the directory containing the cocotb Makefiles and simulator libraries in the subdirectories 
+    Path to the directory containing the cocotb Makefiles and simulator libraries in the subdirectories
     :file:`lib`, :file:`include`, and :file:`makefiles`.
     You don't normally need to modify this.

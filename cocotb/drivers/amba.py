@@ -44,7 +44,7 @@ class AXI4LiteMaster(BusDriver):
 
     TODO: Kill all pending transactions if reset is asserted.
     """
-    
+
     _signals = ["AWVALID", "AWADDR", "AWREADY",        # Write address channel
                 "WVALID", "WREADY", "WDATA", "WSTRB",  # Write data channel
                 "BVALID", "BREADY", "BRESP",           # Write response channel
@@ -68,7 +68,9 @@ class AXI4LiteMaster(BusDriver):
 
     @cocotb.coroutine
     def _send_write_address(self, address, delay=0):
-        """Send the write address, with optional delay (in clocks)."""
+        """
+        Send the write address, with optional delay (in clocks)
+        """
         yield self.write_address_busy.acquire()
         for cycle in range(delay):
             yield RisingEdge(self.clock)
@@ -87,7 +89,7 @@ class AXI4LiteMaster(BusDriver):
 
     @cocotb.coroutine
     def _send_write_data(self, data, delay=0, byte_enable=0xF):
-        """Send the write data, with optional delay (in clocks) and byte enable."""
+        """Send the write address, with optional delay (in clocks)."""
         yield self.write_data_busy.acquire()
         for cycle in range(delay):
             yield RisingEdge(self.clock)
@@ -121,10 +123,10 @@ class AXI4LiteMaster(BusDriver):
                 Default is no delay.
             sync (bool, optional): Wait for rising edge on clock initially.
                 Defaults to True.
-            
+
         Returns:
             BinaryValue: The write response value.
-            
+
         Raises:
             AXIProtocolError: If write response from AXI is not ``OKAY``.
         """
@@ -144,11 +146,11 @@ class AXI4LiteMaster(BusDriver):
 
         # Wait for the response
         while True:
+            yield ReadOnly()
             if self.bus.BVALID.value and self.bus.BREADY.value:
                 result = self.bus.BRESP.value
                 break
             yield RisingEdge(self.clock)
-            yield ReadOnly()
 
         yield RisingEdge(self.clock)
 
@@ -159,9 +161,22 @@ class AXI4LiteMaster(BusDriver):
         raise ReturnValue(result)
 
     @cocotb.coroutine
-    def _send_read_address(self, address):
-        """Send the read address."""
-        yield self.read_address_busy.acquire()
+    def read(self, address, sync=True):
+        """Read from an address.
+
+        Args:
+            address (int): The address to read from.
+            sync (bool, optional): Wait for rising edge on clock initially.
+                Defaults to True.
+
+        Returns:
+            BinaryValue: The read data value.
+
+        Raises:
+            AXIProtocolError: If read response from AXI is not ``OKAY``.
+        """
+        if sync:
+            yield RisingEdge(self.clock)
 
         self.bus.ARADDR <= address
         self.bus.ARVALID <= 1
@@ -171,40 +186,17 @@ class AXI4LiteMaster(BusDriver):
             if self.bus.ARREADY.value:
                 break
             yield RisingEdge(self.clock)
+
         yield RisingEdge(self.clock)
         self.bus.ARVALID <= 0
-        self.read_address_busy.release()
 
-    @cocotb.coroutine
-    def read(self, address, sync=True):
-        """Read from an address.
-        
-        Args:
-            address (int): The address to read from.
-            sync (bool, optional): Wait for rising edge on clock initially.
-                Defaults to True.
-            
-        Returns:
-            BinaryValue: The read data value.
-            
-        Raises:
-            AXIProtocolError: If read response from AXI is not ``OKAY``.
-        """
-        if sync:
-            yield RisingEdge(self.clock)
-
-        yield self._send_read_address(address)
-
-        # Wait for the response
         while True:
+            yield ReadOnly()
             if self.bus.RVALID.value and self.bus.RREADY.value:
                 data = self.bus.RDATA.value
                 result = self.bus.RRESP.value
                 break
             yield RisingEdge(self.clock)
-            yield ReadOnly()
-
-        yield RisingEdge(self.clock)
 
         if int(result):
             raise AXIProtocolError("Read address 0x%08x failed with RRESP: %d" %

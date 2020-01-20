@@ -4,8 +4,10 @@ Release Notes
 
 All releases are available from the `GitHub Releases Page <https://github.com/cocotb/cocotb/releases>`_.
 
-cocotb 1.3
-==========
+cocotb 1.3.0
+============
+
+Released on 08 January 2020
 
 This will likely be the last release to support Python 2.7.
 
@@ -48,8 +50,8 @@ Other news
 
 - cocotb is now packaged for Fedora Linux and available as `python-cocotb <https://apps.fedoraproject.org/packages/python-cocotb>`_. (`Fedora bug #1747574 <https://bugzilla.redhat.com/show_bug.cgi?id=1747574>`_) (thanks Ben Rosser)
 
-cocotb 1.2
-==========
+cocotb 1.2.0
+============
 
 Released on 24 July 2019
 
