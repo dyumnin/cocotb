@@ -78,7 +78,7 @@ class SimBaseLog(logging.getLoggerClass()):
         self.setLevel(logging.NOTSET)
         want_filelogger=os.getenv("COCOTB_FILE_LOGGER")
         if want_filelogger is not None:
-            logfile=os.path.join(os.getenv("RESULT_PATH"),"results.log")
+            logfile=os.path.join(os.getenv("RESULT_PATH",""),"results.log")
             file_handler = RotatingFileHandler(
                 logfile, maxBytes=(1048576*5), backupCount=4
                                                                     )
