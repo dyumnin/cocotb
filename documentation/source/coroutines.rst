@@ -1,5 +1,8 @@
+.. _coroutines:
+
+**********
 Coroutines
-==========
+**********
 
 Testbenches built using cocotb use coroutines. While the coroutine is executing
 the simulation is paused. The coroutine uses the :keyword:`yield` keyword to
@@ -28,18 +31,11 @@ Coroutines may also yield other coroutines:
             yield wait_10ns()
 
 Coroutines can return a value, so that they can be used by other coroutines.
-Before Python 3.3, this requires a :any:`ReturnValue` to be raised.
 
 .. code-block:: python3
 
     @cocotb.coroutine
     def get_signal(clk, signal):
-        yield RisingEdge(clk)
-        raise ReturnValue(signal.value)
-
-    @cocotb.coroutine
-    def get_signal_python_33(clk, signal):
-        # newer versions of Python can use return normally
         yield RisingEdge(clk)
         return signal.value
 
@@ -154,7 +150,7 @@ they'd naturally end.
 .. _async_functions:
 
 Async functions
----------------
+===============
 
 Python 3.5 introduces :keyword:`async` functions, which provide an alternative
 syntax. For example:
@@ -174,13 +170,18 @@ of :keyword:`yield`. Provided they are decorated with ``@cocotb.coroutine``,
 is determined by which type of function it appears in, not by the
 sub-coroutine being called.
 
+.. versionadded:: 1.4
+    The :any:`cocotb.coroutine` decorator is no longer necessary for ``async def`` coroutines.
+    ``async def`` coroutines can be used, without the ``@cocotb.coroutine`` decorator, wherever decorated coroutines are accepted,
+    including :keyword:`yield` statements and :any:`cocotb.fork`.
+
 .. note::
     It is not legal to ``await`` a list of triggers as can be done in
     ``yield``-based coroutine with ``yield [trig1, trig2]``. Use
     ``await First(trig1, trig2)`` instead.
 
 Async generators
-~~~~~~~~~~~~~~~~
+----------------
 
 In Python 3.6, a ``yield`` statement within an ``async`` function has a new
 meaning (rather than being a ``SyntaxError``) which matches the typical meaning

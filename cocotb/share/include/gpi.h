@@ -59,12 +59,6 @@ we have to create a process with the signal on the sensitivity list to imitate a
 
 #include <gpi_logging.h>
 
-#if defined(__MINGW32__) || defined (__CYGWIN32__)
-#  define DLLEXPORT __declspec(dllexport)
-#else
-#  define DLLEXPORT
-#endif
-
 #ifdef __cplusplus
 # define EXTERN_C_START extern "C" {
 # define EXTERN_C_END }
@@ -150,6 +144,11 @@ typedef enum gpi_iterator_sel_e {
     GPI_LOADS = 3,
 } gpi_iterator_sel_t;
 
+typedef enum gpi_set_action_e {
+    GPI_DEPOSIT = 0,
+    GPI_FORCE = 1,
+    GPI_RELEASE = 2,
+} gpi_set_action_t;
 
 // Functions for iterating over entries of a handle
 // Returns an iterator handle which can then be used in gpi_next calls
@@ -195,9 +194,10 @@ int gpi_is_constant(gpi_sim_hdl gpi_hdl);
 int gpi_is_indexable(gpi_sim_hdl gpi_hdl);
 
 // Functions for setting the properties of a handle
-void gpi_set_signal_value_real(gpi_sim_hdl gpi_hdl, double value);
-void gpi_set_signal_value_long(gpi_sim_hdl gpi_hdl, long value);
-void gpi_set_signal_value_str(gpi_sim_hdl gpi_hdl, const char *str);    // String of binary char(s) [1, 0, x, z]
+void gpi_set_signal_value_real(gpi_sim_hdl gpi_hdl, double value, gpi_set_action_t action);
+void gpi_set_signal_value_long(gpi_sim_hdl gpi_hdl, long value, gpi_set_action_t action);
+void gpi_set_signal_value_binstr(gpi_sim_hdl gpi_hdl, const char *str, gpi_set_action_t action); // String of binary char(s) [1, 0, x, z]
+void gpi_set_signal_value_str(gpi_sim_hdl gpi_hdl, const char *str, gpi_set_action_t action);    // String of ASCII char(s)
 
 typedef enum gpi_edge {
     GPI_RISING = 1,
@@ -206,7 +206,7 @@ typedef enum gpi_edge {
 
 // The callback registering functions
 gpi_sim_hdl gpi_register_timed_callback                  (int (*gpi_function)(const void *), void *gpi_cb_data, uint64_t time_ps);
-gpi_sim_hdl gpi_register_value_change_callback           (int (*gpi_function)(const void *), void *gpi_cb_data, gpi_sim_hdl gpi_hdl, unsigned int edge);
+gpi_sim_hdl gpi_register_value_change_callback           (int (*gpi_function)(const void *), void *gpi_cb_data, gpi_sim_hdl gpi_hdl, int edge);
 gpi_sim_hdl gpi_register_readonly_callback               (int (*gpi_function)(const void *), void *gpi_cb_data);
 gpi_sim_hdl gpi_register_nexttime_callback               (int (*gpi_function)(const void *), void *gpi_cb_data);
 gpi_sim_hdl gpi_register_readwrite_callback              (int (*gpi_function)(const void *), void *gpi_cb_data);
@@ -221,7 +221,7 @@ void *gpi_get_callback_data(gpi_sim_hdl gpi_hdl);
 
 // Print out what implementations are registered. Python needs to be loaded for this,
 // Returns the number of libs
-int gpi_print_registered_impl(void);
+size_t gpi_print_registered_impl(void);
 
 #define GPI_RET(_code) \
     if (_code == 1) \

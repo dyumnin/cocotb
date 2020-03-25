@@ -62,48 +62,27 @@ OS=Msys
 endif
 export OS
 
-include $(COCOTB_SHARE_DIR)/makefiles/Makefile.paths
 include $(COCOTB_SHARE_DIR)/makefiles/Makefile.pylib
 
-export LIB_DIR=$(BUILD_DIR)/libs/$(ARCH)
-export LIB_OBJ_DIR:= $(BUILD_DIR)/obj/$(ARCH)
-export INCLUDES := -I$(COCOTB_SHARE_DIR)/include -I$(PYTHON_INCLUDEDIR)
+# Default to Icarus if no simulator is defined
+SIM ?= icarus
 
-LIB_EXT     := so
-PY_EXT	    := so
+SIM_DEFINE := $(shell echo $(SIM) | tr a-z A-Z)
 
-# Base GCC flags
-ifeq ($(ARCH),i686)
-GXX_ARGS    := -m32
+# Use a common define for Questa and Modelsim and cvc
+ifeq ($(SIM_DEFINE),$(filter $(SIM_DEFINE),QUESTA CVC))
+SIM_DEFINE = MODELSIM
 endif
 
-ifeq ($(OS),Darwin)
-GXX_ARGS	+= -g -DDEBUG -fpic
-GCC_ARGS	:= $(GXX_ARGS)
-else ifeq ($(OS),Msys)
-GXX_ARGS 	+= -g -DDEBUG -shared
-ifeq ($(ARCH),x86_64)
-GXX_ARGS  += -DMS_WIN64
+# Use a common define for Xcelium and IUS
+ifeq ($(SIM_DEFINE),XCELIUM)
+SIM_DEFINE = IUS
 endif
-GCC_ARGS	:= $(GXX_ARGS)
-LIB_EXT		:= dll
-PY_EXT		:= pyd
-else ifeq ($(OS),Linux)
-GXX_ARGS	+= -Werror -Wcast-qual -Wcast-align -Wwrite-strings \
-			-Wall -Wno-unused-parameter \
-			-fno-common -g -DDEBUG -fpic
-GCC_ARGS	:= $(GXX_ARGS) -Wstrict-prototypes -Waggregate-return
+
+export LIB_DIR=$(COCOTB_PY_DIR)/cocotb/libs/$(shell echo $(SIM_DEFINE) | tr A-Z a-z)
+
+ifeq ($(OS),Msys)
+LIB_EXT    := dll
 else
-$(error "Unsupported os " $(OS))
-endif
-
-ifeq ($(OS),Darwin)
-SO_LINKER_ARGS := -shared -undefined suppress -flat_namespace -L$(PYTHON_LIBDIR)
-else ifeq ($(OS),Linux)
-SO_LINKER_ARGS := -shared -Xlinker -L$(PYTHON_LIBDIR)
-else ifeq ($(OS),Msys)
-SO_LINKER_ARGS :=  -shared -Wl,-no-undefined -Wl,-enable-runtime-pseudo-reloc-v2 \
-			-Wl,--enable-auto-import -L$(PYTHON_LIBDIR)
-else
-$(error "Unsupported os" $(OS))
+LIB_EXT    := so
 endif

@@ -27,10 +27,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. '''
 import logging
 
 import cocotb
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge, Timer, ReadOnly
 from cocotb.clock import Clock
 from cocotb.drivers.avalon import AvalonMaster
-from cocotb.result import ReturnValue, TestFailure
+from cocotb.result import TestFailure
 
 import hal
 import io_module
@@ -64,7 +64,7 @@ def initial_hal_test(dut, debug=True):
         master.log.debug("External source: reading address 0x%08X" % address)
         value = yield master.read(address)
         master.log.debug("Reading complete: got value 0x%08x" % value)
-        raise ReturnValue(value)
+        return value
 
     @cocotb.function
     def write(address, value):
@@ -84,6 +84,8 @@ def initial_hal_test(dut, debug=True):
         raise TestFailure("Byteswapping is enabled but haven't configured DUT")
 
     yield cocotb.external(hal.endian_swapper_enable)(state)
+
+    yield ReadOnly()
 
     if not dut.byteswapping.value:
         raise TestFailure("Byteswapping wasn't enabled after calling "

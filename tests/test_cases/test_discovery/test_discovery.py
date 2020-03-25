@@ -273,8 +273,9 @@ def access_string_vhdl(dut):
 
 # TODO: add tests for Verilog "string_input_port" and "STRING_LOCALPARAM" (see issue #802)
 
-@cocotb.test(skip=cocotb.LANGUAGE in ["vhdl"],
-             expect_error=cocotb.SIM_NAME.lower().startswith("icarus"))
+@cocotb.test(skip=cocotb.LANGUAGE in ["vhdl"] or cocotb.SIM_NAME.lower().startswith("icarus"),
+             expect_fail=cocotb.SIM_NAME.lower().startswith("modelsim"),
+             expect_error=cocotb.SIM_NAME.startswith(("xmsim", "ncsim")))
 def access_const_string_verilog(dut):
     """Access to a const Verilog string."""
     tlog = logging.getLogger("cocotb.test")
@@ -370,7 +371,7 @@ def access_boolean(dut):
     if (int(curr_val) == int(output_bool)):
         raise TestFailure("Value did not propogate")
 
-@cocotb.test()
+@cocotb.test(skip=cocotb.LANGUAGE in ["vhdl"])
 def access_internal_register_array(dut):
     """Test access to an internal register array"""
 
@@ -443,3 +444,33 @@ def custom_type(dut):
     if expected_top != count:
         raise TestFailure("Expected %d found %d for cosLut" % (expected_top, count))
 
+@cocotb.test(skip=cocotb.LANGUAGE in ["vhdl"])
+def type_check_verilog(dut):
+    """
+    Test if types are recognized
+    """
+
+    tlog = logging.getLogger("cocotb.test")
+
+    yield Timer(1)
+
+    test_handles = [
+        (dut.stream_in_ready, "GPI_REGISTER"),
+        (dut.register_array, "GPI_ARRAY"),
+        (dut.NUM_OF_MODULES, "GPI_PARAMETER"),
+        (dut.temp, "GPI_REGISTER"),
+        (dut.and_output, "GPI_NET"),
+        (dut.stream_in_data, "GPI_NET"),
+        (dut.logic_b, "GPI_REGISTER"),
+        (dut.logic_c, "GPI_REGISTER"),
+    ]
+
+    if cocotb.SIM_NAME.lower().startswith(("icarus")):
+        test_handles.append((dut.logic_a, "GPI_NET")) # https://github.com/steveicarus/iverilog/issues/312
+    else:
+        test_handles.append((dut.logic_a, "GPI_REGISTER"))
+
+    for handle in test_handles:
+        tlog.info("Handle %s" %  (handle[0]._fullname,))
+        if handle[0]._type != handle[1]:
+            raise TestFailure("Expected %s found %s for %s" % (handle[1], handle[0]._type, handle[0]._fullname))

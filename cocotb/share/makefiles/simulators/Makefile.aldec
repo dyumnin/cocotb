@@ -45,13 +45,15 @@ endif
 ifeq (, $(CMD))
     $(error "Unable to locate command >$(CMD_BIN)<")
 else
-	ALDEC_BIN_DIR := $(shell dirname $(CMD))
+    ALDEC_BIN_DIR := $(shell dirname $(CMD))
     export ALDEC_BIN_DIR
 endif
 
 ifeq ($(GUI),1)
     CMD += -nosplash
 endif
+
+ALOG_ARGS += -timescale $(COCOTB_HDL_TIMEUNIT)/$(COCOTB_HDL_TIMEPRECISION)
 
 # below allows for maintaining legacy syntax as well as enables using cross-simulator vars COMPILE_ARGS/SIM_ARGS
 ALOG_ARGS += $(COMPILE_ARGS)
@@ -82,9 +84,9 @@ endif
 
 GPI_EXTRA:=
 ifeq ($(TOPLEVEL_LANG),verilog)
-    GPI_ARGS = -pli libvpi
+    GPI_ARGS = -pli $(LIB_DIR)/libcocotbvpi
 ifneq ($(VHDL_SOURCES),)
-    GPI_EXTRA = vhpi
+    GPI_EXTRA = cocotbvhpi
 endif
 
 else ifeq ($(TOPLEVEL_LANG),vhdl)
@@ -97,7 +99,7 @@ endif
 
     GPI_ARGS = -loadvhpi $(VHPI_LIB):vhpi_startup_routines_bootstrap
 ifneq ($(VERILOG_SOURCES),)
-    GPI_EXTRA = vpi
+    GPI_EXTRA = cocotbvpi
 endif
 
 else
@@ -154,18 +156,10 @@ ifeq ($(OS),Msys)
 
 MINGW_BIN_DIR = $(shell dirname $(shell :; command -v gcc))
 
-EXTRA_LIBS := -laldecpli
-EXTRA_LIBDIRS := -L$(ALDEC_BIN_DIR)
 OLD_PATH := $(shell echo "$(PATH)" | sed 's/(/\\(/g' | sed 's/)/\\)/g' | sed 's/ /\\ /g')
 LIB_LOAD = PATH=$(MINGW_BIN_DIR):$(OLD_PATH):$(LIB_DIR)
 NEW_PYTHONPATH := $(shell echo "$(PYTHONPATH)" | sed -e 's/\\/\//g' -e 's/\([a-zA-Z]\):\//\/\1\//g' -e 's/;/:/g')
 else
-EXTRA_LIBS = -laldecpli
-ifeq ($(ARCH),i686)
-EXTRA_LIBDIRS = -L$(ALDEC_BIN_DIR)/Linux
-else
-EXTRA_LIBDIRS = -L$(ALDEC_BIN_DIR)/Linux64
-endif
 LIB_LOAD := LD_LIBRARY_PATH=$(LIB_DIR):$(LD_LIBRARY_PATH)
 NEW_PYTHONPATH := $(PYTHONPATH)
 endif
@@ -173,8 +167,13 @@ endif
 # Note it's the redirection of the output rather than the 'do' command
 # that turns on batch mode (i.e. exit on completion/error)
 $(COCOTB_RESULTS_FILE): $(SIM_BUILD)/runsim.tcl $(COCOTB_LIBS) $(COCOTB_VHPI_LIB) $(COCOTB_VPI_LIB) $(CUSTOM_SIM_DEPS)
+	-@rm -f $(COCOTB_RESULTS_FILE)
+
 	set -o pipefail; cd $(SIM_BUILD) && PYTHONPATH=$(LIB_DIR):$(PWD):$(NEW_PYTHONPATH) GPI_EXTRA=$(GPI_EXTRA) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
-	$(LIB_LOAD) MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) COCOTB_SIM=1 $(CMD) -do runsim.tcl | tee sim.log
+	$(LIB_LOAD) MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) COCOTB_SIM=1 $(CMD) $(RUN_ARGS) -do runsim.tcl | tee sim.log
+
+	# check that the file was actually created
+	test -f $(COCOTB_RESULTS_FILE)
 
 clean::
 	@rm -rf $(SIM_BUILD)

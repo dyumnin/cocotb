@@ -30,9 +30,9 @@
 // Embed Python into the simulator using GPI
 
 #include <Python.h>
+#include <unistd.h>
 #include <cocotb_utils.h>
 #include "embed.h"
-#include "../compat/python3_compat.h"
 #include "locale.h"
 
 #if defined(_WIN32)
@@ -44,13 +44,8 @@
 #endif
 static PyThreadState *gtstate = NULL;
 
-#if PY_MAJOR_VERSION >= 3
 static wchar_t progname[] = L"cocotb";
 static wchar_t *argv[] = { progname };
-#else
-static char progname[] = "cocotb";
-static char *argv[] = { progname };
-#endif
 
 #if defined(_WIN32)
 #if defined(__MINGW32__) || defined (__CYGWIN32__)
@@ -69,9 +64,7 @@ static PyObject *pEventFn = NULL;
 static void set_program_name_in_venv(void)
 {
     static char venv_path[PATH_MAX];
-#if PY_MAJOR_VERSION >= 3
     static wchar_t venv_path_w[PATH_MAX];
-#endif
 
     const char *venv_path_home = getenv("VIRTUAL_ENV");
     if (!venv_path_home) {
@@ -79,7 +72,7 @@ static void set_program_name_in_venv(void)
         return;
     }
 
-    strncpy(venv_path, venv_path_home, sizeof(venv_path));
+    strncpy(venv_path, venv_path_home, sizeof(venv_path)-1);
     if (venv_path[sizeof(venv_path) - 1]) {
         LOG_ERROR("Unable to set Python Program Name using virtual environment. Path to virtual environment too long");
         return;
@@ -91,7 +84,6 @@ static void set_program_name_in_venv(void)
         return;
     }
 
-#if PY_MAJOR_VERSION >= 3
     wcsncpy(venv_path_w, Py_DecodeLocale(venv_path, NULL), sizeof(venv_path_w)/sizeof(wchar_t));
 
     if (venv_path_w[(sizeof(venv_path_w)/sizeof(wchar_t)) - 1]) {
@@ -101,10 +93,6 @@ static void set_program_name_in_venv(void)
 
     LOG_INFO("Using Python virtual environment interpreter at %ls", venv_path_w);
     Py_SetProgramName(venv_path_w);
-#else
-    LOG_INFO("Using Python virtual environment interpreter at %s", venv_path);
-    Py_SetProgramName(venv_path);
-#endif
 }
 
 
@@ -153,8 +141,10 @@ void embed_init_python(void)
        such that they can attach */
     const char *pause = getenv("COCOTB_ATTACH");
     if (pause) {
-        long sleep_time = strtol(pause, NULL, 10);
-        if (errno == ERANGE && (sleep_time == LONG_MAX || sleep_time == LONG_MIN)) {
+        unsigned long sleep_time = strtoul(pause, NULL, 10);
+        /* This should check for out-of-range parses which returns ULONG_MAX and sets errno,
+           as well as correct parses that would be sliced by the narrowing cast */
+        if (errno == ERANGE || sleep_time >= UINT_MAX) {
             LOG_ERROR("COCOTB_ATTACH only needs to be set to ~30 seconds");
             goto out;
         }
@@ -165,7 +155,7 @@ void embed_init_python(void)
         }
 
         LOG_ERROR("Waiting for %lu seconds - attach to PID %d with your debugger\n", sleep_time, getpid());
-        sleep(sleep_time);
+        sleep((unsigned int)sleep_time);
     }
 out:
     FEXIT;
@@ -312,10 +302,12 @@ int embed_sim_init(gpi_sim_info_t *info)
         goto cleanup;
     }
     for (i = 0; i < info->argc; i++) {
-        PyObject *argv_item = PyString_FromString(info->argv[i]);       // New reference
+        // Decode, embedding non-decodable bytes using PEP-383. This can only
+        // fail with MemoryError or similar.
+        PyObject *argv_item = PyUnicode_DecodeLocale(info->argv[i], "surrogateescape");  // New reference
         if (argv_item == NULL) {
             PyErr_Print();
-            LOG_ERROR("Unable to create Python string from argv[%d] = \"%s\"", i, info->argv[i]);
+            LOG_ERROR("Unable to convert command line argument %d to Unicode string.", i);
             Py_DECREF(argv_list);
             goto cleanup;
         }
@@ -357,7 +349,7 @@ int embed_sim_init(gpi_sim_info_t *info)
     const char *lang = getenv("TOPLEVEL_LANG");
     PyObject *PyLang;
     if (lang) {
-        PyLang = PyString_FromString(lang);                             // New reference
+        PyLang = PyUnicode_FromString(lang);                            // New reference
     } else {
         Py_INCREF(Py_None);
         PyLang = Py_None;
@@ -405,7 +397,7 @@ int embed_sim_init(gpi_sim_info_t *info)
         Py_INCREF(Py_None);
         dut_arg = Py_None;
     } else {
-        dut_arg = PyString_FromString(dut);                             // New reference
+        dut_arg = PyUnicode_FromString(dut);                            // New reference
     }
     if (dut_arg == NULL) {
         PyErr_Print();
@@ -455,13 +447,7 @@ void embed_sim_event(gpi_event_t level, const char *msg)
             msg = "No message provided";
         }
 
-#if PY_MAJOR_VERSION >= 3
         PyObject* pValue = PyObject_CallFunction(pEventFn, "ls", level, msg);
-#else
-        // Workaround for bpo-9369, fixed in 3.4
-        static char format[] = "ls";
-        PyObject* pValue = PyObject_CallFunction(pEventFn, format, level, msg);
-#endif
         if (pValue == NULL) {
             PyErr_Print();
             LOG_ERROR("Passing event to upper layer failed");

@@ -31,11 +31,7 @@
 
 import ctypes
 import warnings
-import sys
-if sys.version_info.major < 3:
-    import collections as collections_abc
-else:
-    import collections.abc as collections_abc
+import collections.abc
 
 import os
 
@@ -48,7 +44,6 @@ import cocotb
 from cocotb.binary import BinaryValue
 from cocotb.log import SimLog
 from cocotb.result import TestError
-from cocotb import _py_compat
 
 # Only issue a warning for each deprecated attribute access
 _deprecation_warned = {}
@@ -195,13 +190,7 @@ class RegionObject(SimHandleBase):
         if self._discovered:
             return
         self._log.debug("Discovering all on %s", self._name)
-        iterator = simulator.iterate(self._handle, simulator.OBJECTS)
-        while True:
-            try:
-                thing = simulator.next(iterator)
-            except StopIteration:
-                # Iterator is cleaned up internally in GPI
-                break
+        for thing in _SimIterator(self._handle, simulator.OBJECTS):
             name = simulator.get_name_string(thing)
             try:
                 hdl = SimHandle(thing, self._child_path(name))
@@ -259,7 +248,8 @@ class HierarchyObject(RegionObject):
                     sub[idx] = value[idx]
                 return
             else:
-                return sub._setcachedvalue(value)
+                sub.value = value
+                return
         if name in self._compat_mapping:
             return SimHandleBase.__setattr__(self, name, value)
         raise AttributeError("Attempt to access %s which isn't present in %s" %(
@@ -391,9 +381,6 @@ class _AssignmentResult(object):
             .format(self)
         )
 
-    # Python 2
-    __nonzero__ = __bool__
-
 
 class NonHierarchyObject(SimHandleBase):
     """Common base class for all non-hierarchy objects."""
@@ -401,20 +388,16 @@ class NonHierarchyObject(SimHandleBase):
     def __iter__(self):
         return iter(())
 
-    def _getvalue(self):
-        if type(self) is NonHierarchyIndexableObject:
-            # need to iterate over the sub-object
-            result = []
-            for x in range(len(self)):
-                result.append(self[x]._getvalue())
-            return result
-        else:
-            raise TypeError("Not permissible to get values of object %s of type %s" % (self._name, type(self)))
+    @property
+    def value(self):
+        "A reference to the value"
+        raise TypeError("Not permissible to get values of object %s of type %s" % (self._name, type(self)))
 
     def setimmediatevalue(self, value):
         raise TypeError("Not permissible to set values on object %s of type %s" % (self._name, type(self)))
 
-    def _setcachedvalue(self, value):
+    @value.setter
+    def value(self, value):
         raise TypeError("Not permissible to set values on object %s of type %s" % (self._name, type(self)))
 
     def __le__(self, value):
@@ -442,13 +425,7 @@ class NonHierarchyObject(SimHandleBase):
             return SimHandleBase.__ne__(self, other)
         return self.value != other
 
-    # We want to maintain compatibility with python 2.5 so we can't use @property with a setter
-    value = property(fget=lambda self: self._getvalue(),
-                     fset=lambda self, v: self._setcachedvalue(v),
-                     fdel=None,
-                     doc="A reference to the value")
-
-    # Re-define hash because Python 3 has issues when using the above property
+    # Re-define hash because we defined __eq__
     def __hash__(self):
         return SimHandleBase.__hash__(self)
 
@@ -489,7 +466,8 @@ class ConstantObject(NonHierarchyObject):
     def __float__(self):
         return float(self.value)
 
-    def _getvalue(self):
+    @NonHierarchyObject.value.getter
+    def value(self):
         return self._value
 
     def __str__(self):
@@ -550,8 +528,16 @@ class NonHierarchyIndexableObject(NonHierarchyObject):
                 yield left
                 left = left + 1
 
+    @NonHierarchyObject.value.getter
+    def value(self):
+        # need to iterate over the sub-object
+        result = []
+        for x in range(len(self)):
+            result.append(self[x].value)
+        return result
 
-class _SimIterator(collections_abc.Iterator):
+
+class _SimIterator(collections.abc.Iterator):
     """Iterator over simulator objects. For internal use only."""
 
     def __init__(self, handle, mode):
@@ -559,10 +545,6 @@ class _SimIterator(collections_abc.Iterator):
 
     def __next__(self):
         return simulator.next(self._iter)
-
-    if sys.version_info.major < 3:
-        next = __next__
-
 
 
 class NonConstantObject(NonHierarchyIndexableObject):
@@ -577,6 +559,35 @@ class NonConstantObject(NonHierarchyIndexableObject):
         """An iterator for gathering all loads on a signal."""
         return _SimIterator(self._handle, simulator.LOADS)
 
+class _SetAction:
+    """Base class representing the type of action used while write-accessing a handle."""
+    pass
+
+class _SetValueAction(_SetAction):
+    __slots__ = ("value",)
+    """Base class representing the type of action used while write-accessing a handle with a value."""
+    def __init__(self, value):
+        self.value = value
+
+class Deposit(_SetValueAction):
+    """Action used for placing a value into a given handle."""
+    def _as_gpi_args_for(self, hdl):
+        return self.value, 0  # GPI_DEPOSIT
+
+class Force(_SetValueAction):
+    """Action used to force a handle to a given value until a release is applied."""
+    def _as_gpi_args_for(self, hdl):
+        return self.value, 1  # GPI_FORCE
+
+class Freeze(_SetAction):
+    """Action used to make a handle keep its current value until a release is used."""
+    def _as_gpi_args_for(self, hdl):
+        return hdl.value, 1  # GPI_FORCE
+
+class Release(_SetAction):
+    """Action used to stop the effects of a previously applied force/freeze action."""
+    def _as_gpi_args_for(self, hdl):
+        return 0, 2  # GPI_RELEASE
 
 class ModifiableObject(NonConstantObject):
     """Base class for simulator objects whose values can be modified."""
@@ -598,13 +609,14 @@ class ModifiableObject(NonConstantObject):
             TypeError: If target is not wide enough or has an unsupported type
                  for value assignment.
         """
-        if isinstance(value, _py_compat.integer_types) and value < 0x7fffffff and len(self) <= 32:
-            simulator.set_signal_val_long(self._handle, value)
-            return
+        value, set_action = self._check_for_set_action(value)
 
+        if isinstance(value, int) and value < 0x7fffffff and len(self) <= 32:
+            simulator.set_signal_val_long(self._handle, set_action, value)
+            return
         if isinstance(value, ctypes.Structure):
             value = BinaryValue(value=cocotb.utils.pack(value), n_bits=len(self))
-        elif isinstance(value, _py_compat.integer_types):
+        elif isinstance(value, int):
             value = BinaryValue(value=value, n_bits=len(self), bigEndian=False)
         elif isinstance(value, dict):
             # We're given a dictionary with a list of values and a bit size...
@@ -625,14 +637,21 @@ class ModifiableObject(NonConstantObject):
             self._log.critical("Unsupported type for value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
-        simulator.set_signal_val_str(self._handle, value.binstr)
+        simulator.set_signal_val_binstr(self._handle, set_action, value.binstr)
 
-    def _getvalue(self):
+    def _check_for_set_action(self, value):
+        if not isinstance(value, _SetAction):
+            return value, 0  # GPI_DEPOSIT
+        return value._as_gpi_args_for(self)
+
+    @NonConstantObject.value.getter
+    def value(self):
         binstr = simulator.get_signal_val_binstr(self._handle)
         result = BinaryValue(binstr, len(binstr))
         return result
 
-    def _setcachedvalue(self, value):
+    @value.setter
+    def value(self, value):
         """Intercept the store of a value and hold in cache.
 
         This operation is to enable all of the scheduled callbacks to complete
@@ -664,13 +683,19 @@ class RealObject(ModifiableObject):
             TypeError: If target has an unsupported type for
                 real value assignment.
         """
-        if not isinstance(value, float):
-            self._log.critical("Unsupported type for real value assignment: %s (%s)", type(value), repr(value))
+        value, set_action = self._check_for_set_action(value)
+
+        try:
+            value = float(value)
+        except ValueError:
+            self._log.critical("Unsupported type for real value assignment: %s (%s)" %
+                               (type(value), repr(value)))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
-        simulator.set_signal_val_real(self._handle, value)
+        simulator.set_signal_val_real(self._handle, set_action, value)
 
-    def _getvalue(self):
+    @ModifiableObject.value.getter
+    def value(self):
         return simulator.get_signal_val_real(self._handle)
 
     def __float__(self):
@@ -693,15 +718,18 @@ class EnumObject(ModifiableObject):
             TypeError: If target has an unsupported type for
                  integer value assignment.
         """
+        value, set_action = self._check_for_set_action(value)
+
         if isinstance(value, BinaryValue):
             value = int(value)
-        elif not isinstance(value, _py_compat.integer_types):
+        elif not isinstance(value, int):
             self._log.critical("Unsupported type for integer value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
-        simulator.set_signal_val_long(self._handle, value)
+        simulator.set_signal_val_long(self._handle, set_action, value)
 
-    def _getvalue(self):
+    @ModifiableObject.value.getter
+    def value(self):
         return simulator.get_signal_val_long(self._handle)
 
 
@@ -721,15 +749,18 @@ class IntegerObject(ModifiableObject):
             TypeError: If target has an unsupported type for
                  integer value assignment.
         """
+        value, set_action = self._check_for_set_action(value)
+
         if isinstance(value, BinaryValue):
             value = int(value)
-        elif not isinstance(value, _py_compat.integer_types):
+        elif not isinstance(value, int):
             self._log.critical("Unsupported type for integer value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
-        simulator.set_signal_val_long(self._handle, value)
+        simulator.set_signal_val_long(self._handle, set_action, value)
 
-    def _getvalue(self):
+    @ModifiableObject.value.getter
+    def value(self):
         return simulator.get_signal_val_long(self._handle)
 
 
@@ -749,13 +780,16 @@ class StringObject(ModifiableObject):
             TypeError: If target has an unsupported type for
                  string value assignment.
         """
+        value, set_action = self._check_for_set_action(value)
+
         if not isinstance(value, str):
             self._log.critical("Unsupported type for string value assignment: %s (%s)", type(value), repr(value))
             raise TypeError("Unable to set simulator value with type %s" % (type(value)))
 
-        simulator.set_signal_val_str(self._handle, value)
+        simulator.set_signal_val_str(self._handle, set_action, value)
 
-    def _getvalue(self):
+    @ModifiableObject.value.getter
+    def value(self):
         return simulator.get_signal_val_str(self._handle)
 
 _handle2obj = {}
@@ -777,6 +811,7 @@ def SimHandle(handle, path=None):
         simulator.MODULE:      HierarchyObject,
         simulator.STRUCTURE:   HierarchyObject,
         simulator.REG:         ModifiableObject,
+        simulator.NET:         ModifiableObject,
         simulator.NETARRAY:    NonHierarchyIndexableObject,
         simulator.REAL:        RealObject,
         simulator.INTEGER:     IntegerObject,

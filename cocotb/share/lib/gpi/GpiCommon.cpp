@@ -33,6 +33,8 @@
 #include <unistd.h>
 #include <vector>
 #include <map>
+#include <algorithm>
+#include <string>
 
 using namespace std;
 
@@ -94,7 +96,7 @@ static GpiHandleStore unique_handles;
 #endif
 
 
-int gpi_print_registered_impl()
+size_t gpi_print_registered_impl()
 {
     vector<GpiImplInterface*>::iterator iter;
     for (iter = registered_impls.begin();
@@ -159,19 +161,35 @@ static void gpi_load_libs(std::vector<std::string> to_load)
          iter != to_load.end();
          iter++)
     {
-        void *lib_handle = NULL;
-        std::string full_name = "lib" + *iter + DOT_LIB_EXT;
-        const char *now_loading = (full_name).c_str();
 
-        lib_handle = utils_dyn_open(now_loading);
+        std::string arg = *iter;
+
+        std::string lib_name;
+        std::string func_name;
+        auto it = std::find(arg.begin(), arg.end(), ':');
+        bool const has_colon = it == arg.end();
+        if (has_colon) {
+            // no colon in the string, default
+            lib_name = arg;
+            func_name = arg + "_entry_point";
+        }
+        else {
+            lib_name = std::string(arg.begin(), it);
+            func_name = std::string(it+1, arg.end());
+        }
+
+        std::string full_name = "lib" + lib_name + DOT_LIB_EXT;
+        void *lib_handle = utils_dyn_open(full_name.c_str());
         if (!lib_handle) {
-            printf("cocotb: Error loading shared library %s\n", now_loading);
+            printf("cocotb: Error loading shared library %s\n", full_name.c_str());
             exit(1);
         }
-        std::string sym = (*iter) + "_entry_point";
-        void *entry_point = utils_dyn_sym(lib_handle, sym.c_str());
+
+        void *entry_point = utils_dyn_sym(lib_handle, func_name.c_str());
         if (!entry_point) {
-            printf("cocotb: Unable to find entry point %s for shared library %s\n", sym.c_str(), now_loading);
+            char const* fmt = "cocotb: Unable to find entry point %s for shared library %s\n%s";
+            char const* msg = "        Perhaps you meant to use `,` instead of `:` to separate library names, as this changed in cocotb 1.4?\n";
+            printf(fmt, func_name.c_str(), full_name.c_str(), has_colon ? msg : "");
             exit(1);
         }
 
@@ -192,7 +210,7 @@ void gpi_load_extra_libs()
 
     if (lib_env) {
         std::string lib_list = lib_env;
-        std::string delim = ":";
+        std::string const delim = ",";
         std::vector<std::string> to_load;
 
         size_t e_pos = 0;
@@ -351,8 +369,6 @@ gpi_sim_hdl gpi_get_handle_by_name(gpi_sim_hdl parent, const char *name)
 
 gpi_sim_hdl gpi_get_handle_by_index(gpi_sim_hdl parent, int32_t index)
 {
-    vector<GpiImplInterface*>::iterator iter;
-
     GpiObjHdl *hdl         = NULL;
     GpiObjHdl *base        = sim_to_hdl<GpiObjHdl*>(parent);
     GpiImplInterface *intf = base->m_impl;
@@ -495,23 +511,31 @@ int gpi_is_indexable(gpi_sim_hdl sig_hdl)
     return 0;
 }
 
-void gpi_set_signal_value_long(gpi_sim_hdl sig_hdl, long value)
+void gpi_set_signal_value_long(gpi_sim_hdl sig_hdl, long value, gpi_set_action_t action)
 {
     GpiSignalObjHdl *obj_hdl = sim_to_hdl<GpiSignalObjHdl*>(sig_hdl);
-    obj_hdl->set_signal_value(value);
+
+    obj_hdl->set_signal_value(value, action);
 }
 
-void gpi_set_signal_value_str(gpi_sim_hdl sig_hdl, const char *str)
+void gpi_set_signal_value_binstr(gpi_sim_hdl sig_hdl, const char *binstr, gpi_set_action_t action)
+{
+    std::string value = binstr;
+    GpiSignalObjHdl *obj_hdl = sim_to_hdl<GpiSignalObjHdl*>(sig_hdl);
+    obj_hdl->set_signal_value_binstr(value, action);
+}
+
+void gpi_set_signal_value_str(gpi_sim_hdl sig_hdl, const char *str, gpi_set_action_t action)
 {
     std::string value = str;
     GpiSignalObjHdl *obj_hdl = sim_to_hdl<GpiSignalObjHdl*>(sig_hdl);
-    obj_hdl->set_signal_value(value);
+    obj_hdl->set_signal_value_str(value, action);
 }
 
-void gpi_set_signal_value_real(gpi_sim_hdl sig_hdl, double value)
+void gpi_set_signal_value_real(gpi_sim_hdl sig_hdl, double value, gpi_set_action_t action)
 {
     GpiSignalObjHdl *obj_hdl = sim_to_hdl<GpiSignalObjHdl*>(sig_hdl);
-    obj_hdl->set_signal_value(value);
+    obj_hdl->set_signal_value(value, action);
 }
 
 int gpi_get_num_elems(gpi_sim_hdl sig_hdl)
@@ -535,7 +559,7 @@ int gpi_get_range_right(gpi_sim_hdl sig_hdl)
 gpi_sim_hdl gpi_register_value_change_callback(int (*gpi_function)(const void *),
                                                void *gpi_cb_data,
                                                gpi_sim_hdl sig_hdl,
-                                               unsigned int edge)
+                                               int edge)
 {
 
     GpiSignalObjHdl *signal_hdl = sim_to_hdl<GpiSignalObjHdl*>(sig_hdl);
@@ -609,21 +633,6 @@ gpi_sim_hdl gpi_register_readwrite_callback(int (*gpi_function)(const void *),
 
     gpi_hdl->set_user_data(gpi_function, gpi_cb_data);
     return (gpi_sim_hdl)gpi_hdl;
-}
-
-gpi_sim_hdl gpi_create_clock(gpi_sim_hdl clk_signal, const int period)
-{
-    GpiObjHdl *clk_hdl = sim_to_hdl<GpiObjHdl*>(clk_signal);
-    GpiClockHdl *clock = new GpiClockHdl(clk_hdl);
-    clock->start_clock(period);
-    return (gpi_sim_hdl)clock;
-}
-
-void gpi_stop_clock(gpi_sim_hdl clk_object)
-{
-    GpiClockHdl *clock = sim_to_hdl<GpiClockHdl*>(clk_object);
-    clock->stop_clock();
-    delete(clock);
 }
 
 void gpi_deregister_callback(gpi_sim_hdl hdl)

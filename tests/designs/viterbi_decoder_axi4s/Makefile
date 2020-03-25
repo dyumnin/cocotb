@@ -65,11 +65,11 @@ VHDL_SOURCES = $(SRC_BASE)/packages/pkg_helper.vhd \
 	       $(SRC_BASE)/src/recursion.vhd \
 	       $(SRC_BASE)/src/dec_viterbi.vhd
 
-ifeq ($(SIM),$(filter $(SIM),ius xcelium))
+ifneq ($(filter $(SIM),ius xcelium),)
     SIM_ARGS += -v93
 endif
 
-include $(COCOTB)/makefiles/Makefile.inc
-include $(COCOTB)/makefiles/Makefile.sim
+include $(shell cocotb-config --makefiles)/Makefile.inc
+include $(shell cocotb-config --makefiles)/Makefile.sim
 
 endif

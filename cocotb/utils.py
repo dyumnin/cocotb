@@ -49,8 +49,7 @@ def get_python_integer_types():
     warnings.warn(
         "This is an internal cocotb function, use six.integer_types instead",
         DeprecationWarning)
-    from cocotb import _py_compat
-    return _py_compat.integer_types
+    return (int,)
 
 
 # Simulator helper functions
@@ -427,8 +426,7 @@ class ParametrizedSingleton(type):
         """Convert the construction arguments into a normalized representation that
         uniquely identifies this singleton.
         """
-        # Once we drop Python 2, we can implement a default like the following,
-        # which will work in 99% of cases:
+        # Could default to something like this, but it would be slow
         # return tuple(inspect.Signature(cls).bind(*args, **kwargs).arguments.items())
         raise NotImplementedError
 
@@ -539,11 +537,6 @@ def remove_traceback_frames(tb_or_exc, frame_names):
     # self-invoking overloads
     if isinstance(tb_or_exc, BaseException):
         exc = tb_or_exc
-        if sys.version_info < (3,):
-            raise RuntimeError(
-                "Cannot use remove_traceback_frames on exceptions in python 2. "
-                "Call it directly on the traceback object instead.")
-
         return exc.with_traceback(
             remove_traceback_frames(exc.__traceback__, frame_names)
         )

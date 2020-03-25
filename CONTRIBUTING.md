@@ -61,6 +61,7 @@ All changes which should go into the main codebase of cocotb must follow this se
 - All code must pass existing tests.
   New functionality must be accompanied by tests, and bug fixes should add tests to increase the test coverage and prevent regressions.
 - If code changes or enhances documented behavior the documentation should be updated.
+- If a change is user-visible, a newsfragment should be added to `documentation/source/newsfragments`.
 - All pull requests must be accepted by at least one maintainer, with no maintainer strongly objecting.
   Reviews must be performed by a person other than the primary author of the code.
 - All commits should follow established best practices when creating a commit message:
@@ -130,6 +131,7 @@ Most maintainers are experts in part of the cocotb codebase, and are primarily r
   Founder of cocotb.
 - Stuart Hodgson (@stuarthodgson).
   Founder of cocotb.
+- Colin Marquardt (@cmarqu)
 - Philipp Wagner (@imphil)
 - Eric Wieser (@eric-wieser)
 

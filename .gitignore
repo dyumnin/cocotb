@@ -6,7 +6,7 @@
 # C objects
 *.o
 
-# Packages
+# Packaging
 *.egg
 *.egg-info
 dist
@@ -18,6 +18,7 @@ obj
 develop-eggs
 .installed.cfg
 __pycache__
+.tox
 
 # Vim tmp files
 *.swp
@@ -38,10 +39,16 @@ __pycache__
 results.xml
 combined_results.xml
 
+# Debuggers
+.gdb_history
+
 # VCS files
 *.tab
 sim_build
 ucli.key
+
+# Pytest
+.pytest_cache
 
 # Cadence Incisive/Xcelium
 *.elog
@@ -61,3 +68,14 @@ bpad_*.err
 .bpad/
 .simvision/
 waves.shm/
+
+# Interface libraries built on setup
+cocotb/libs
+pip-wheel-metadata/
+
+# Mentor Modelsim/Questa
+tests/test_cases/*/modelsim.ini
+tests/test_cases/*/transcript
+examples/*/tests/modelsim.ini
+examples/*/tests/transcript
+*.wlf
