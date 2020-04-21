@@ -28,7 +28,7 @@
 """
 Cocotb is a coroutine, cosimulation framework for writing testbenches in Python.
 
-See http://cocotb.readthedocs.org for full documentation
+See https://docs.cocotb.org for full documentation
 """
 import os
 import sys
@@ -56,6 +56,11 @@ from ._version import __version__
 
 # GPI logging instance
 if "COCOTB_SIM" in os.environ:
+
+    # sys.path normally includes "" (the current directory), but does not appear to when python is embedded.
+    # Add it back because users expect to be able to import files in their test directory.
+    # TODO: move this to gpi_embed.cpp
+    sys.path.insert(0, "")
 
     def _reopen_stream_with_buffering(stream_name):
         try:
@@ -136,12 +141,8 @@ def _initialise_testbench(root_name):
     if memcheck_port is not None:
         mem_debug(int(memcheck_port))
 
-    exec_path = os.getenv('COCOTB_PY_DIR')
-    if exec_path is None:
-        exec_path = 'Unknown'
-
     log.info("Running tests with cocotb v%s from %s" %
-             (__version__, exec_path))
+             (__version__, os.path.dirname(__file__)))
 
     # Create the base handle type
 
@@ -168,12 +169,11 @@ def _initialise_testbench(root_name):
     test_str = os.getenv('TESTCASE')
     hooks_str = os.getenv('COCOTB_HOOKS', '')
 
-    if not module_str:
-        raise ImportError("Environment variables defining the module(s) to " +
-                          "execute not defined.  MODULE=\"%s\"" % (module_str))
+    if module_str is None:
+        raise ValueError("Environment variable MODULE, which defines the module(s) to execute, is not defined.")
 
-    modules = module_str.split(',')
-    hooks = hooks_str.split(',') if hooks_str else []
+    modules = [s.strip() for s in module_str.split(',') if s.strip()]
+    hooks = [s.strip() for s in hooks_str.split(',') if s.strip()]
 
     global regression_manager
 

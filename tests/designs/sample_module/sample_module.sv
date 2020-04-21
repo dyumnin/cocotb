@@ -48,7 +48,7 @@ module sample_module (
     output real                                 stream_out_real,
     output integer                              stream_out_int,
     input  test_if                              inout_if,
-    input string                                string_input_port,
+    input string                                stream_in_string,
 `endif
     input  [7:0]                                stream_in_data,
     input  [63:0]                               stream_in_data_wide,
@@ -93,8 +93,8 @@ test_if struct_var;
 and test_and_gate(and_output, stream_in_ready, stream_in_valid);
 
 initial begin
-     $dumpfile("waveform.vcd");
-     $dumpvars(0,sample_module);
+    $dumpfile("waveform.vcd");
+    $dumpvars(0,sample_module);
 
 //   TODO: Move into a separate test
 //     #500000 $fail_test("Test timed out, failing...");
@@ -104,17 +104,32 @@ reg[3:0] temp;
 parameter NUM_OF_MODULES = 4;
 genvar idx;
 generate
-for (idx = 0; idx < NUM_OF_MODULES; idx=idx+1) begin
-    always @(posedge clk) begin
-        temp[idx] <= 1'b0;
+    for (idx = 0; idx < NUM_OF_MODULES; idx=idx+1) begin
+        always @(posedge clk) begin
+            temp[idx] <= 1'b0;
+        end
     end
-end
 endgenerate
 
 reg [7:0] register_array [1:0];
 always @(posedge clk) begin
     // Ensure internal array is not optimized out
     register_array[0] <= 0;
+end
+
+//For testing arrays
+reg [7:0]  array_7_downto_4[7:4];
+reg [7:0]  array_4_to_7[4:7];
+reg [7:0]  array_3_downto_0[3:0];
+reg [7:0]  array_0_to_3[0:3];
+reg [7:0]  array_2d[0:1][31:28];
+always @(posedge stream_in_valid) begin
+    // Ensure internal array is not optimized out
+    array_7_downto_4[4] <= 0;
+    array_4_to_7[7] <= 0;
+    array_3_downto_0[0] <= 0;
+    array_0_to_3[3] <= 0;
+    array_2d[1][28] <= 0;
 end
 
 //For testing type assigned to logic

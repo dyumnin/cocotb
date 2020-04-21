@@ -29,7 +29,7 @@ def _check_logic(tlog, hdl, expected):
         tlog.info("   Found {0!r} ({1}) with value=0x{2:X}".format(hdl, hdl._type, int(hdl)))
 
 def _check_str(tlog, hdl, expected):
-    if str(hdl) != expected:
+    if hdl.value != expected:
         raise TestFailure("{2!r}: Expected >{0}< but got >{1}<".format(expected, str(hdl), hdl))
     else:
         tlog.info("   Found {0!r} ({1}) with value={2}".format(hdl, hdl._type, str(hdl)))
@@ -39,6 +39,12 @@ def _check_real(tlog, hdl, expected):
         raise TestFailure("{2!r}: Expected >{0}< but got >{1}<".format(expected, float(hdl), hdl))
     else:
         tlog.info("   Found {0!r} ({1}) with value={2}".format(hdl, hdl._type, float(hdl)))
+
+def _check_value(tlog, hdl, expected):
+    if hdl.value != expected:
+        raise TestFailure("{2!r}: Expected >{0}< but got >{1}<".format(expected, hdl.value, hdl))
+    else:
+        tlog.info("   Found {0!r} ({1}) with value={2}".format(hdl, hdl._type, hdl.value))
 
 # NOTE: simulator-specific handling is done in this test itself, not via expect_error in the decorator
 @cocotb.test()
@@ -59,7 +65,7 @@ def test_read_write(dut):
         _check_int (tlog, dut.param_int , 6)
         _check_real(tlog, dut.param_real, 3.14)
         _check_int (tlog, dut.param_char, ord('p'))
-        _check_str (tlog, dut.param_str , "ARRAYMOD")
+        _check_str (tlog, dut.param_str , b"ARRAYMOD")
 
         if not cocotb.SIM_NAME.lower().startswith(("riviera")):
             _check_logic(tlog, dut.param_rec.a        , 0)
@@ -84,7 +90,7 @@ def test_read_write(dut):
         _check_int (tlog, dut.const_int , 12)
         _check_real(tlog, dut.const_real, 6.28)
         _check_int (tlog, dut.const_char, ord('c'))
-        _check_str (tlog, dut.const_str , "MODARRAY")
+        _check_str (tlog, dut.const_str , b"MODARRAY")
 
         if not cocotb.SIM_NAME.lower().startswith(("riviera")):
             _check_logic(tlog, dut.const_rec.a        , 1)
@@ -107,6 +113,14 @@ def test_read_write(dut):
     tlog.info("Writing the signals!!!")
     dut.sig_logic         = 1
     dut.sig_logic_vec     = 0xCC
+    dut.sig_t2 = [0xCC, 0xDD, 0xEE, 0xFF]
+    dut.sig_t4 = [
+        [0x00, 0x11, 0x22, 0x33],
+        [0x44, 0x55, 0x66, 0x77],
+        [0x88, 0x99, 0xAA, 0xBB],
+        [0xCC, 0xDD, 0xEE, 0xFF]
+    ]
+
     if cocotb.LANGUAGE in ["vhdl"]:
         dut.sig_bool          = 1
         dut.sig_int           = 5000
@@ -131,13 +145,18 @@ def test_read_write(dut):
     tlog.info("Checking writes:")
     _check_logic(tlog, dut.port_logic_out    , 1)
     _check_logic(tlog, dut.port_logic_vec_out, 0xCC)
+    _check_value(tlog, dut.sig_t2, [0xCC, 0xDD, 0xEE, 0xFF])
+    _check_logic(tlog, dut.sig_t2[7], 0xCC)
+    _check_logic(tlog, dut.sig_t2[4], 0xFF)
+    _check_logic(tlog, dut.sig_t4[1][5], 0x66)
+    _check_logic(tlog, dut.sig_t4[3][7], 0xCC)
 
     if cocotb.LANGUAGE in ["vhdl"]:
         _check_int (tlog, dut.port_bool_out, 1)
         _check_int (tlog, dut.port_int_out , 5000)
         _check_real(tlog, dut.port_real_out, 22.54)
         _check_int (tlog, dut.port_char_out, ord('Z'))
-        _check_str (tlog, dut.port_str_out , "Testing")
+        _check_str (tlog, dut.port_str_out , b"Testing")
 
         _check_logic(tlog, dut.port_rec_out.a        , 1)
         _check_logic(tlog, dut.port_rec_out.b[0]     , 0x01)
@@ -176,7 +195,7 @@ def test_read_write(dut):
         _check_logic(tlog, dut.sig_t6[0][2][7], 0)
 
     if cocotb.LANGUAGE in ["vhdl"]:
-        _check_str(tlog, dut.port_str_out, "TEsting")  # the uppercase "E" from a few lines before
+        _check_str(tlog, dut.port_str_out, b"TEsting")  # the uppercase "E" from a few lines before
 
         _check_logic(tlog, dut.port_rec_out.b[1]     , 0xA3)
         _check_logic(tlog, dut.port_cmplx_out[1].b[1], 0xEE)

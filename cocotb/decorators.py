@@ -25,7 +25,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
 import sys
 import time
 import logging
@@ -74,7 +73,7 @@ class CoroutineComplete(Exception):
         Exception.__init__(self, text)
 
 
-class RunningTask(object):
+class RunningTask:
     """Per instance wrapper around a running generator.
 
     Provides the following:
@@ -101,7 +100,8 @@ class RunningTask(object):
             raise TypeError(
                 "%s isn't a valid coroutine! Did you forget to use the yield keyword?" % inst)
         self._coro = inst
-        self.__name__ = "%s" % inst.__name__
+        self.__name__ = inst.__name__
+        self.__qualname__ = inst.__qualname__
         self._started = False
         self._callbacks = []
         self._outcome = None
@@ -110,10 +110,7 @@ class RunningTask(object):
     def log(self):
         # Creating a logger is expensive, only do it if we actually plan to
         # log anything
-        if hasattr(self, "__name__"):
-            return SimLog("cocotb.coroutine.%s" % self.__name__, id(self))
-        else:
-            return SimLog("cocotb.coroutine.fail")
+        return SimLog("cocotb.coroutine.%s" % self.__qualname__, id(self))
 
     @property
     def retval(self):
@@ -129,7 +126,7 @@ class RunningTask(object):
         return self
 
     def __str__(self):
-        return str(self.__name__)
+        return str(self.__qualname__)
 
     def _advance(self, outcome):
         """Advance to the next yield in this coroutine.
@@ -185,7 +182,7 @@ class RunningTask(object):
     def has_started(self):
         return self._started
 
-    def __nonzero__(self):
+    def __bool__(self):
         """Provide boolean testing
             if the coroutine has finished return false
             otherwise return true"""
@@ -201,8 +198,6 @@ class RunningTask(object):
 
         # Hand the coroutine back to the scheduler trampoline.
         return (yield self)
-
-    __bool__ = __nonzero__
 
 
 class RunningCoroutine(RunningTask):
@@ -239,7 +234,7 @@ class RunningTest(RunningCoroutine):
     def __init__(self, inst, parent):
         self.error_messages = []
         RunningCoroutine.__init__(self, inst, parent)
-        self.log = SimLog("cocotb.test.%s" % self.__name__, id(self))
+        self.log = SimLog("cocotb.test.%s" % self.__qualname__, id(self))
         self.started = False
         self.start_time = 0
         self.start_sim_time = 0
@@ -286,7 +281,7 @@ class RunningTest(RunningCoroutine):
             return "%s.%d.%s" % (self.module, self.stage, self.funcname)
 
 
-class coroutine(object):
+class coroutine:
     """Decorator class that allows us to provide common coroutine mechanisms:
 
     ``log`` methods will log to ``cocotb.coroutine.name``.
@@ -298,30 +293,29 @@ class coroutine(object):
 
     def __init__(self, func):
         self._func = func
-        self.__name__ = self._func.__name__
         functools.update_wrapper(self, func)
 
     @lazy_property
     def log(self):
-        return SimLog("cocotb.coroutine.%s" % self._func.__name__, id(self))
+        return SimLog("cocotb.coroutine.%s" % self._func.__qualname__, id(self))
 
     def __call__(self, *args, **kwargs):
         return RunningCoroutine(self._func(*args, **kwargs), self)
 
-    def __get__(self, obj, type=None):
+    def __get__(self, obj, owner=None):
         """Permit the decorator to be used on class methods
             and standalone functions"""
-        return self.__class__(self._func.__get__(obj, type))
+        return type(self)(self._func.__get__(obj, owner))
 
     def __iter__(self):
         return self
 
     def __str__(self):
-        return str(self._func.__name__)
+        return str(self._func.__qualname__)
 
 
 @public
-class function(object):
+class function:
     """Decorator class that allows a function to block.
 
     This allows a coroutine that consumes simulation time
@@ -334,18 +328,18 @@ class function(object):
 
     @lazy_property
     def log(self):
-        return SimLog("cocotb.function.%s" % self._coro.__name__, id(self))
+        return SimLog("cocotb.function.%s" % self._coro.__qualname__, id(self))
 
     def __call__(self, *args, **kwargs):
         return cocotb.scheduler.queue_function(self._coro(*args, **kwargs))
 
-    def __get__(self, obj, type=None):
+    def __get__(self, obj, owner=None):
         """Permit the decorator to be used on class methods
             and standalone functions"""
-        return self.__class__(self._coro._func.__get__(obj, type))
+        return type(self)(self._coro._func.__get__(obj, owner))
 
 @public
-class external(object):
+class external:
     """Decorator to apply to an external function to enable calling from cocotb.
 
     This turns a normal function that isn't a coroutine into a blocking coroutine.
@@ -355,15 +349,15 @@ class external(object):
     """
     def __init__(self, func):
         self._func = func
-        self._log = SimLog("cocotb.external.%s" % self._func.__name__, id(self))
+        self._log = SimLog("cocotb.external.%s" % self._func.__qualname__, id(self))
 
     def __call__(self, *args, **kwargs):
         return cocotb.scheduler.run_in_executor(self._func, *args, **kwargs)
 
-    def __get__(self, obj, type=None):
+    def __get__(self, obj, owner=None):
         """Permit the decorator to be used on class methods
             and standalone functions"""
-        return self.__class__(self._func.__get__(obj, type))
+        return type(self)(self._func.__get__(obj, owner))
 
 
 class _decorator_helper(type):
@@ -416,12 +410,17 @@ class test(coroutine, metaclass=_decorator_helper):
     Used as ``@cocotb.test(...)``.
 
     Args:
-        timeout_time (int, optional):
-            Value representing simulation timeout.
+        timeout_time (numbers.Real or decimal.Decimal, optional):
+            Simulation time duration before timeout occurs.
 
             .. versionadded:: 1.3
-        timeout_unit (str, optional):
-            Unit of timeout value, see :class:`~cocotb.triggers.Timer` for more info.
+
+            .. note::
+                Test timeout is intended for protection against deadlock.
+                Users should use :class:`~cocotb.triggers.with_timeout` if they require a
+                more general-purpose timeout mechanism.
+        timeout_unit (str or None, optional):
+            Units of timeout_time, accepts any units that :class:`~cocotb.triggers.Timer` does.
 
             .. versionadded:: 1.3
         expect_fail (bool, optional):
@@ -434,9 +433,9 @@ class test(coroutine, metaclass=_decorator_helper):
             Users are encouraged to use the following idiom instead::
 
                 @cocotb.test()
-                def my_test(dut):
+                async def my_test(dut):
                     try:
-                        yield thing_that_should_fail()
+                        await thing_that_should_fail()
                     except ExceptionIExpect:
                         pass
                     else:
@@ -463,10 +462,11 @@ class test(coroutine, metaclass=_decorator_helper):
             co = coroutine(f)
 
             @functools.wraps(f)
-            def f(*args, **kwargs):
+            async def f(*args, **kwargs):
                 running_co = co(*args, **kwargs)
+
                 try:
-                    res = yield cocotb.triggers.with_timeout(running_co, self.timeout_time, self.timeout_unit)
+                    res = await cocotb.triggers.with_timeout(running_co, self.timeout_time, self.timeout_unit)
                 except cocotb.result.SimTimeoutError:
                     running_co.kill()
                     raise
