@@ -30,7 +30,6 @@
 #include "gpi_priv.h"
 #include <cocotb_utils.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -124,9 +123,14 @@ int gpi_register_impl(GpiImplInterface *func_tbl)
     return 0;
 }
 
-void gpi_embed_init(gpi_sim_info_t *info)
+bool gpi_has_registered_impl()
 {
-    if (embed_sim_init(info))
+    return registered_impls.size() > 0;
+}
+
+void gpi_embed_init(int argc, char const* const* argv)
+{
+    if (embed_sim_init(argc, argv))
         gpi_embed_end();
 }
 
@@ -200,11 +204,6 @@ static void gpi_load_libs(std::vector<std::string> to_load)
 
 void gpi_load_extra_libs()
 {
-    static bool loading = false;
-
-    if (loading)
-        return;
-
     /* Lets look at what other libs we were asked to load too */
     char *lib_env = getenv("GPI_EXTRA");
 
@@ -224,7 +223,6 @@ void gpi_load_extra_libs()
             to_load.push_back(lib_list);
         }
 
-        loading = true;
         gpi_load_libs(to_load);
     }
 
@@ -251,6 +249,16 @@ void gpi_get_sim_precision(int32_t *precision)
 
     *precision = val;
 
+}
+
+const char *gpi_get_simulator_product()
+{
+    return registered_impls[0]->get_simulator_product();
+}
+
+const char *gpi_get_simulator_version()
+{
+    return registered_impls[0]->get_simulator_version();
 }
 
 gpi_sim_hdl gpi_get_root_handle(const char *name)

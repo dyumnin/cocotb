@@ -12,11 +12,6 @@ import os
 import subprocess
 import sys
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath('../..'))
-
 # Add in-tree extensions to path
 sys.path.insert(0, os.path.abspath('../sphinxext'))
 
@@ -48,9 +43,13 @@ extensions = [
     'sphinx_issues',
     'sphinxarg.ext',
     'sphinxcontrib.spelling',
+    'sphinx_tabs.tabs',
     ]
 
-intersphinx_mapping = {'python': ('https://docs.python.org/3', None)}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'ghdl': ('https://ghdl.readthedocs.io/en/latest', None)
+}
 
 # Github repo
 issues_github_path = "cocotb/cocotb"
@@ -341,7 +340,8 @@ graphviz_output_format = 'svg'
 # -- Extra setup for towncrier -------------------------------------------------
 # see also https://towncrier.readthedocs.io/en/actual-freaking-docs/
 
-in_progress_notes = subprocess.check_output(['towncrier', '--draft'],
+# we pass the name and version directly, to avoid towncrier failing to import the non-installed version
+in_progress_notes = subprocess.check_output(['towncrier', '--draft', '--name', 'cocotb', '--version', release],
                                             cwd='../..',
                                             universal_newlines=True)
 with open('generated/master-notes.rst', 'w') as f:

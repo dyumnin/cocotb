@@ -27,12 +27,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###############################################################################
 
+TOPLEVEL_LANG ?= verilog
+
 include $(shell cocotb-config --makefiles)/Makefile.inc
 
-ifneq ($(VHDL_SOURCES),)
+ifneq ($(or $(filter-out $(TOPLEVEL_LANG),verilog),$(VHDL_SOURCES)),)
 
 $(COCOTB_RESULTS_FILE):
-	@echo "Skipping simulation as VHDL is not supported on simulator=$(SIM)"
+	@echo "Skipping simulation as only Verilog is supported on simulator=$(SIM)"
 debug: $(COCOTB_RESULTS_FILE)
 clean::
 
@@ -54,10 +56,11 @@ else
     export ICARUS_BIN_DIR
 endif
 
-COMPILE_ARGS += -g2012 # Default to latest SystemVerilog standard
+COMPILE_ARGS += -f $(SIM_BUILD)/cmds.f -g2012 # Default to latest SystemVerilog standard
 
 # Compilation phase
-$(SIM_BUILD)/sim.vvp: $(SIM_BUILD) $(VERILOG_SOURCES) $(CUSTOM_COMPILE_DEPS)
+$(SIM_BUILD)/sim.vvp: $(VERILOG_SOURCES) $(CUSTOM_COMPILE_DEPS) | $(SIM_BUILD)
+	@echo "+timescale+$(COCOTB_HDL_TIMEUNIT)/$(COCOTB_HDL_TIMEPRECISION)" > $(SIM_BUILD)/cmds.f
 	$(CMD) -o $(SIM_BUILD)/sim.vvp -D COCOTB_SIM=1 -s $(TOPLEVEL) $(COMPILE_ARGS) $(EXTRA_ARGS) $(VERILOG_SOURCES)
 
 # Execution phase
@@ -65,8 +68,7 @@ $(SIM_BUILD)/sim.vvp: $(SIM_BUILD) $(VERILOG_SOURCES) $(CUSTOM_COMPILE_DEPS)
 $(COCOTB_RESULTS_FILE): $(SIM_BUILD)/sim.vvp $(CUSTOM_SIM_DEPS)
 	-@rm -f $(COCOTB_RESULTS_FILE)
 
-	MODULE=$(MODULE) \
-        TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) COCOTB_SIM=1 \
+	MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
         $(ICARUS_BIN_DIR)/vvp -M $(LIB_DIR) -m libcocotbvpi_icarus $(SIM_ARGS) $(EXTRA_ARGS) $(SIM_BUILD)/sim.vvp $(PLUSARGS)
 
 	$(call check_for_results_file)
@@ -74,8 +76,7 @@ $(COCOTB_RESULTS_FILE): $(SIM_BUILD)/sim.vvp $(CUSTOM_SIM_DEPS)
 debug: $(SIM_BUILD)/sim.vvp $(CUSTOM_SIM_DEPS)
 	-@rm -f $(COCOTB_RESULTS_FILE)
 
-	MODULE=$(MODULE) \
-        TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) COCOTB_SIM=1 \
+	MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
         gdb --args $(ICARUS_BIN_DIR)/vvp -M $(LIB_DIR) -m libcocotbvpi_icarus $(SIM_BUILD)/sim.vvp $(SIM_ARGS) $(EXTRA_ARGS) $(PLUSARGS)
 
 	$(call check_for_results_file)

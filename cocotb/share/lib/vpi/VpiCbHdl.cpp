@@ -29,6 +29,7 @@
 
 #include <assert.h>
 #include "VpiImpl.h"
+#include <stdexcept>
 
 extern "C" int32_t handle_vpi_callback(p_cb_data cb_data);
 
@@ -96,11 +97,13 @@ int VpiCbHdl::cleanup_callback()
 
     if (m_state == GPI_PRIMED) {
         if (!m_obj_hdl) {
-            LOG_CRITICAL("VPI: passed a NULL pointer : ABORTING");
+            LOG_ERROR("VPI: passed a NULL pointer");
+            return -1;
         }
 
         if (!(vpi_remove_cb(get_handle<vpiHandle>()))) {
-            LOG_CRITICAL("VPI: unable to remove callback : ABORTING");
+            LOG_ERROR("VPI: unable to remove callback");
+            return -1;
         }
 
         check_vpi_error();
@@ -108,7 +111,8 @@ int VpiCbHdl::cleanup_callback()
 #ifndef MODELSIM
         /* This is disabled for now, causes a small leak going to put back in */
         if (!(vpi_free_object(get_handle<vpiHandle>()))) {
-            LOG_CRITICAL("VPI: unable to free handle : ABORTING");
+            LOG_ERROR("VPI: unable to free handle");
+            return -1;
         }
 #endif
     }
@@ -164,7 +168,8 @@ int VpiArrayObjHdl::initialise(std::string &name, std::string &fq_name) {
         }
 
         if (rangeHdl == NULL) {
-            LOG_CRITICAL("Unable to get range for indexable object");
+            LOG_ERROR("Unable to get range for indexable object");
+            return -1;
         } else {
             vpi_free_object(iter); // Need to free iterator since exited early
 
@@ -185,7 +190,8 @@ int VpiArrayObjHdl::initialise(std::string &name, std::string &fq_name) {
         check_vpi_error();
         m_range_right = val.value.integer;
     } else {
-        LOG_CRITICAL("Unable to get range for indexable object");
+        LOG_ERROR("Unable to get range for indexable object");
+        return -1;
     }
 
     /* vpiSize will return a size that is incorrect for multi-dimensional arrays so use the range
@@ -260,7 +266,8 @@ int VpiSignalObjHdl::initialise(std::string &name, std::string &fq_name) {
                         check_vpi_error();
                         m_range_right = val.value.integer;
                     } else {
-                        LOG_CRITICAL("Unable to get range for indexable object");
+                        LOG_ERROR("Unable to get range for indexable object");
+                        return -1;
                     }
                 }
                 else {
@@ -283,7 +290,6 @@ int VpiSignalObjHdl::initialise(std::string &name, std::string &fq_name) {
 
 const char* VpiSignalObjHdl::get_signal_value_binstr()
 {
-    FENTER
     s_vpi_value value_s = {vpiBinStrVal, {NULL}};
 
     vpi_get_value(GpiObjHdl::get_handle<vpiHandle>(), &value_s);
@@ -304,7 +310,6 @@ const char* VpiSignalObjHdl::get_signal_value_str()
 
 double VpiSignalObjHdl::get_signal_value_real()
 {
-    FENTER
     s_vpi_value value_s = {vpiRealVal, {NULL}};
 
     vpi_get_value(GpiObjHdl::get_handle<vpiHandle>(), &value_s);
@@ -315,7 +320,6 @@ double VpiSignalObjHdl::get_signal_value_real()
 
 long VpiSignalObjHdl::get_signal_value_long()
 {
-    FENTER
     s_vpi_value value_s = {vpiIntVal, {NULL}};
 
     vpi_get_value(GpiObjHdl::get_handle<vpiHandle>(), &value_s);
@@ -373,7 +377,6 @@ int VpiSignalObjHdl::set_signal_value_str(std::string &value, gpi_set_action_t a
 
 int VpiSignalObjHdl::set_signal_value(s_vpi_value value_s, gpi_set_action_t action)
 {
-    FENTER
     PLI_INT32 vpi_put_flag = -1;
     s_vpi_time vpi_time_s;
 
@@ -411,7 +414,6 @@ int VpiSignalObjHdl::set_signal_value(s_vpi_value value_s, gpi_set_action_t acti
 
     check_vpi_error();
 
-    FEXIT
     return 0;
 }
 
@@ -463,7 +465,8 @@ int VpiValueCbHdl::cleanup_callback()
     /* This is a recurring callback so just remove when
      * not wanted */
     if (!(vpi_remove_cb(get_handle<vpiHandle>()))) {
-        LOG_CRITICAL("VPI: unbale to remove callback : ABORTING");
+        LOG_ERROR("VPI: unable to remove callback");
+        return -1;
     }
 
     m_obj_hdl = NULL;
@@ -486,16 +489,14 @@ VpiStartupCbHdl::VpiStartupCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
 
 int VpiStartupCbHdl::run_callback() {
     s_vpi_vlog_info info;
-    gpi_sim_info_t sim_info;
 
-    vpi_get_vlog_info(&info);
+    if (!vpi_get_vlog_info(&info)) {
+        LOG_WARN("Unable to get argv and argc from simulator");
+        info.argc = 0;
+        info.argv = nullptr;
+    }
 
-    sim_info.argc = info.argc;
-    sim_info.argv = info.argv;
-    sim_info.product = info.product;
-    sim_info.version = info.version;
-
-    gpi_embed_init(&sim_info);
+    gpi_embed_init(info.argc, info.argv);
 
     return 0;
 }
@@ -559,10 +560,9 @@ VpiNextPhaseCbHdl::VpiNextPhaseCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
     cb_data.reason = cbNextSimTime;
 }
 
-void vpi_mappings(GpiIteratorMapping<int32_t, int32_t> &map)
-{
-    /* vpiModule */
-    int32_t module_options[] = {
+decltype(VpiIterator::iterate_over) VpiIterator::iterate_over = []{
+    /* for reused lists */
+    std::initializer_list<int32_t> module_options = {
         //vpiModule,            // Aldec SEGV on mixed language
         //vpiModuleArray,       // Aldec SEGV on mixed language
         //vpiIODecl,            // Don't care about these
@@ -594,12 +594,8 @@ void vpi_mappings(GpiIteratorMapping<int32_t, int32_t> &map)
         vpiInternalScope,
         //vpiInterface,         // Aldec SEGV on mixed language
         //vpiInterfaceArray,    // Aldec SEGV on mixed language
-        0
     };
-    map.add_to_options(vpiModule, &module_options[0]);
-    map.add_to_options(vpiGenScope, &module_options[0]);
-
-    int32_t struct_options[] = {
+    std::initializer_list<int32_t> struct_options = {
         vpiNet,
 #ifndef IUS
         vpiNetArray,
@@ -612,64 +608,46 @@ void vpi_mappings(GpiIteratorMapping<int32_t, int32_t> &map)
         vpiPrimitiveArray,
         vpiAttribute,
         vpiMember,
-        0
     };
-    map.add_to_options(vpiStructVar, &struct_options[0]);
-    map.add_to_options(vpiStructNet, &struct_options[0]);
 
-    /* vpiNet */
-    int32_t net_options[] = {
-        //vpiContAssign,        // Driver and load handled separately
-        //vpiPrimTerm,
-        //vpiPathTerm,
-        //vpiTchkTerm,
-        //vpiDriver,
-        //vpiLocalDriver,
-        //vpiLoad,
-        //vpiLocalLoad,
-        vpiNetBit,
-        0
+    return decltype(VpiIterator::iterate_over) {
+        {vpiModule, module_options},
+        {vpiGenScope, module_options},
+
+        {vpiStructVar, struct_options},
+        {vpiStructNet, struct_options},
+
+        {vpiNet, {
+            //vpiContAssign,        // Driver and load handled separately
+            //vpiPrimTerm,
+            //vpiPathTerm,
+            //vpiTchkTerm,
+            //vpiDriver,
+            //vpiLocalDriver,
+            //vpiLoad,
+            //vpiLocalLoad,
+            vpiNetBit,
+        }},
+        {vpiNetArray, {
+            vpiNet,
+        }},
+        {vpiRegArray, {
+            vpiReg,
+        }},
+        {vpiMemory, {
+            vpiMemoryWord,
+        }},
+        {vpiPort, {
+            vpiPortBit,
+        }},
+        {vpiGate, {
+            vpiPrimTerm,
+            vpiTableEntry,
+            vpiUdpDefn,
+        }},
     };
-    map.add_to_options(vpiNet, &net_options[0]);
+}();
 
-    /* vpiNetArray */
-    int32_t netarray_options[] = {
-        vpiNet,
-        0
-    };
-    map.add_to_options(vpiNetArray, &netarray_options[0]);
-
-    /* vpiRegArray */
-    int32_t regarray_options[] = {
-        vpiReg,
-        0
-    };
-    map.add_to_options(vpiRegArray, &regarray_options[0]);
-
-    /* vpiMemory */
-    int32_t memory_options[] = {
-        vpiMemoryWord,
-        0
-    };
-    map.add_to_options(vpiMemory, &memory_options[0]);
-
-    /* vpiPort */
-    int32_t port_options[] = {
-        vpiPortBit,
-        0
-    };
-    map.add_to_options(vpiPort, &port_options[0]);
-
-    int32_t gate_options[] = {
-        vpiPrimTerm,
-        vpiTableEntry,
-        vpiUdpDefn,
-        0
-    };
-    map.add_to_options(vpiGate, &gate_options[0]);
-}
-
-GpiIteratorMapping<int32_t, int32_t> VpiIterator::iterate_over(vpi_mappings);
 
 VpiIterator::VpiIterator(GpiImplInterface *impl, GpiObjHdl *hdl) : GpiIterator(impl, hdl),
                                                                    m_iterator(NULL)
@@ -678,9 +656,13 @@ VpiIterator::VpiIterator(GpiImplInterface *impl, GpiObjHdl *hdl) : GpiIterator(i
     vpiHandle vpi_hdl = m_parent->get_handle<vpiHandle>();
 
     int type = vpi_get(vpiType, vpi_hdl);
-    if (NULL == (selected = iterate_over.get_options(type))) {
+    try {
+        selected = &iterate_over.at(type);
+    }
+    catch (std::out_of_range const&) {
         LOG_WARN("VPI: Implementation does not know how to iterate over %s(%d)",
                   vpi_get_str(vpiType, vpi_hdl), type);
+        selected = nullptr;
         return;
     }
 
@@ -713,10 +695,10 @@ VpiIterator::VpiIterator(GpiImplInterface *impl, GpiObjHdl *hdl) : GpiIterator(i
         return;
     }
 
-    LOG_DEBUG("Created iterator working from type %d %s (%s)",
-              *one2many,
+    LOG_DEBUG("Created iterator working from '%s' with type %s(%d)",
               vpi_get_str(vpiFullName, vpi_hdl),
-              vpi_get_str(vpiType, vpi_hdl));
+              vpi_get_str(vpiType, vpi_hdl),
+              type);
 
     m_iterator = iterator;
 }

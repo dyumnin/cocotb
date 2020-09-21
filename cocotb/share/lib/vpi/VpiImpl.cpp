@@ -72,7 +72,29 @@ void VpiImpl::get_sim_precision(int32_t *precision)
     *precision = vpi_get(vpiTimePrecision, NULL);
 }
 
-gpi_objtype_t to_gpi_objtype(int32_t vpitype)
+const char *VpiImpl::get_simulator_product()
+{
+    if (m_product.empty() && m_version.empty()) {
+        s_vpi_vlog_info info;
+        if (!vpi_get_vlog_info(&info)) {
+            LOG_WARN("Could not obtain info about the simulator");
+            m_product = "UNKNOWN";
+            m_version = "UNKNOWN";
+        } else {
+            m_product = info.product;
+            m_version = info.version;
+        }
+    }
+    return m_product.c_str();
+}
+
+const char *VpiImpl::get_simulator_version()
+{
+    get_simulator_product();
+    return m_version.c_str();
+}
+
+static gpi_objtype_t to_gpi_objtype(int32_t vpitype)
 {
     switch (vpitype) {
         case vpiNet:
@@ -105,9 +127,6 @@ gpi_objtype_t to_gpi_objtype(int32_t vpitype)
         case vpiIntegerNet:
             return GPI_INTEGER;
 
-        case vpiParameter:
-            return GPI_PARAMETER;
-
         case vpiStructVar:
         case vpiStructNet:
         case vpiUnionVar:
@@ -131,6 +150,27 @@ gpi_objtype_t to_gpi_objtype(int32_t vpitype)
 
         default:
             LOG_DEBUG("Unable to map VPI type %d onto GPI type", vpitype);
+            return GPI_UNKNOWN;
+    }
+}
+
+static gpi_objtype_t const_type_to_gpi_objtype(int32_t const_type)
+{
+    switch (const_type)
+    {
+        case vpiDecConst:
+        case vpiBinaryConst:
+        case vpiOctConst:
+        case vpiHexConst:
+        case vpiIntConst:
+            return GPI_INTEGER;
+        case vpiRealConst:
+            return GPI_REAL;
+        case vpiStringConst:
+            return GPI_STRING;
+        //case vpiTimeConst:  // Not implemented
+        default:
+            LOG_DEBUG("Unable to map vpiConst type %d onto GPI type", const_type);
             return GPI_UNKNOWN;
     }
 }
@@ -165,8 +205,12 @@ GpiObjHdl* VpiImpl::create_gpi_obj_from_handle(vpiHandle new_hdl,
             new_obj = new VpiSignalObjHdl(this, new_hdl, to_gpi_objtype(type), false);
             break;
         case vpiParameter:
-            new_obj = new VpiSignalObjHdl(this, new_hdl, to_gpi_objtype(type), true);
+        case vpiConstant:
+        {
+            auto const_type = vpi_get(vpiConstType, new_hdl);
+            new_obj = new VpiSignalObjHdl(this, new_hdl, const_type_to_gpi_objtype(const_type), true);
             break;
+        }
         case vpiRegArray:
         case vpiNetArray:
         case vpiInterfaceArray:
@@ -219,7 +263,7 @@ GpiObjHdl* VpiImpl::create_gpi_obj_from_handle(vpiHandle new_hdl,
 
     new_obj->initialise(name, fq_name);
 
-    LOG_DEBUG("VPI: Created object with type was %s(%d)",
+    LOG_DEBUG("VPI: Created GPI object from type %s(%d)",
               vpi_get_str(vpiType, new_hdl), type);
 
     return new_obj;
@@ -521,8 +565,7 @@ GpiCbHdl *VpiImpl::register_nexttime_callback()
 
 int VpiImpl::deregister_callback(GpiCbHdl *gpi_hdl)
 {
-    gpi_hdl->cleanup_callback();
-    return 0;
+    return gpi_hdl->cleanup_callback();
 }
 
 // If the Python world wants things to shut down then unregister
@@ -534,7 +577,7 @@ void VpiImpl::sim_end()
      */
     if (GPI_DELETE != sim_finish_cb->get_call_state()) {
         sim_finish_cb->set_call_state(GPI_DELETE);
-        vpi_control(vpiFinish);
+        vpi_control(vpiFinish, vpiDiagTimeLoc);
         check_vpi_error();
     }
 }
@@ -550,6 +593,8 @@ int32_t handle_vpi_callback(p_cb_data cb_data)
 
     if (!cb_hdl) {
         LOG_CRITICAL("VPI: Callback data corrupted: ABORTING");
+        gpi_embed_end();
+        return -1;
     }
 
     gpi_cb_state_e old_state = cb_hdl->get_call_state();
@@ -563,13 +608,15 @@ int32_t handle_vpi_callback(p_cb_data cb_data)
 
         /* We have re-primed in the handler */
         if (new_state != GPI_PRIMED)
-            if (cb_hdl->cleanup_callback())
+            if (cb_hdl->cleanup_callback()) {
                 delete cb_hdl;
+            }
 
     } else {
         /* Issue #188: This is a work around for a modelsim */
-        if (cb_hdl->cleanup_callback())
+        if (cb_hdl->cleanup_callback()) {
             delete cb_hdl;
+        }
     }
 
     return rv;
@@ -579,7 +626,6 @@ static void register_embed()
 {
     vpi_table = new VpiImpl("VPI");
     gpi_register_impl(vpi_table);
-    gpi_load_extra_libs();
 }
 
 
@@ -693,8 +739,9 @@ static void register_system_functions()
 
 }
 
-void (*vlog_startup_routines[])() = {
+COCOTBVPI_EXPORT void (*vlog_startup_routines[])() = {
     register_embed,
+    gpi_load_extra_libs,
     register_system_functions,
     register_initial_callback,
     register_final_callback,
@@ -703,7 +750,7 @@ void (*vlog_startup_routines[])() = {
 
 
 // For non-VPI compliant applications that cannot find vlog_startup_routines symbol
-void vlog_startup_routines_bootstrap() {
+COCOTBVPI_EXPORT void vlog_startup_routines_bootstrap() {
     // call each routine in turn like VPI would
     for (auto it = &vlog_startup_routines[0]; *it != nullptr; it++) {
         auto routine = *it;

@@ -28,8 +28,16 @@
 #ifndef COCOTB_VHPI_IMPL_H_
 #define COCOTB_VHPI_IMPL_H_
 
+#include <exports.h>
+#ifdef COCOTBVHPI_EXPORTS
+#define COCOTBVHPI_EXPORT COCOTB_EXPORT
+#else
+#define COCOTBVHPI_EXPORT COCOTB_IMPORT
+#endif
+
 #include "../gpi/gpi_priv.h"
 #include <vhpi_user.h>
+#include <vhpi_user_ext.h>
 #include <vector>
 #include <map>
 
@@ -231,7 +239,7 @@ public:
 private:
     vhpiHandleT m_iterator;
     vhpiHandleT m_iter_obj;
-    static GpiIteratorMapping<vhpiClassKindT, vhpiOneToManyT> iterate_over;      /* Possible mappings */
+    static std::map<vhpiClassKindT, std::vector<vhpiOneToManyT>> iterate_over;      /* Possible mappings */
     std::vector<vhpiOneToManyT> *selected; /* Mapping currently in use */
     std::vector<vhpiOneToManyT>::iterator one2many;
 };
@@ -247,6 +255,8 @@ public:
     void sim_end() override;
     void get_sim_time(uint32_t *high, uint32_t *low) override;
     void get_sim_precision(int32_t *precision) override;
+    const char *get_simulator_product() override;
+    const char *get_simulator_version() override;
 
     /* Hierachy related */
     GpiObjHdl *get_root_handle(const char *name) override;

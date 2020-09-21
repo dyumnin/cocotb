@@ -28,19 +28,24 @@
 """Collection of handy functions."""
 
 import ctypes
+import inspect
 import math
 import os
 import sys
+import traceback
 import weakref
 import functools
 import warnings
 
-if "COCOTB_SIM" in os.environ:
-    from cocotb import simulator
-    _LOG_SIM_PRECISION = simulator.get_precision()  # request once and cache
-else:
-    simulator = None
-    _LOG_SIM_PRECISION = -15
+from cocotb import simulator
+
+
+def _get_simulator_precision():
+    # cache and replace this function
+    precision = simulator.get_precision()
+    global _get_simulator_precision
+    _get_simulator_precision = precision.__int__
+    return _get_simulator_precision()
 
 
 def get_python_integer_types():
@@ -94,7 +99,7 @@ def get_time_from_sim_steps(steps, units):
     Returns:
         The simulation time in the specified units.
     """
-    return _ldexp10(steps, _LOG_SIM_PRECISION - _get_log_time_scale(units))
+    return _ldexp10(steps, _get_simulator_precision() - _get_log_time_scale(units))
 
 
 def get_sim_steps(time, units=None):
@@ -114,14 +119,14 @@ def get_sim_steps(time, units=None):
     """
     result = time
     if units is not None:
-        result = _ldexp10(result, _get_log_time_scale(units) - _LOG_SIM_PRECISION)
+        result = _ldexp10(result, _get_log_time_scale(units) - _get_simulator_precision())
 
     result_rounded = math.floor(result)
 
     if result_rounded != result:
         raise ValueError("Unable to accurately represent {0}({1}) with the "
                          "simulator precision of 1e{2}".format(
-                             time, units, _LOG_SIM_PRECISION))
+                             time, units, _get_simulator_precision()))
 
     return int(result_rounded)
 
@@ -295,7 +300,6 @@ def hexdiffs(x: bytes, y: bytes) -> str:
         else:
             return string
 
-
     x_is_str = isinstance(x, str)
     y_is_str = isinstance(y, str)
     if x_is_str or y_is_str:
@@ -345,7 +349,6 @@ def hexdiffs(x: bytes, y: bytes) -> str:
     doy = 0
     l = len(backtrackx)
     while i < l:
-        separate = 0
         linex = backtrackx[i:i+16]
         liney = backtracky[i:i+16]
         xx = sum(len(k) for k in linex)
@@ -426,8 +429,6 @@ def hexdiffs(x: bytes, y: bytes) -> str:
     return rs
 
 
-
-
 class ParametrizedSingleton(type):
     """A metaclass that allows class construction to reuse an existing instance.
 
@@ -458,6 +459,10 @@ class ParametrizedSingleton(type):
             self = super(ParametrizedSingleton, cls).__call__(*args, **kwargs)
             cls.__instances[key] = self
             return self
+
+    @property
+    def __signature__(cls):
+        return inspect.signature(cls.__singleton_key__)
 
 
 def reject_remaining_kwargs(name, kwargs):
@@ -503,6 +508,7 @@ class lazy_property:
     This should be used for expensive members of objects that are not always
     used.
     """
+
     def __init__(self, fget):
         self.fget = fget
 
@@ -524,6 +530,8 @@ def want_color_output():
     Colored output can be explicitly requested by setting :envvar:`COCOTB_ANSI_OUTPUT` to  ``1``.
     """
     want_color = sys.stdout.isatty()  # default to color for TTYs
+    if os.getenv("NO_COLOR") is not None:
+        want_color = False
     if os.getenv("COCOTB_ANSI_OUTPUT", default='0') == '1':
         want_color = True
     if os.getenv("GUI", default='0') == '1':
@@ -578,3 +586,39 @@ def remove_traceback_frames(tb_or_exc, frame_names):
             assert tb.tb_frame.f_code.co_name == frame_name
             tb = tb.tb_next
         return tb
+
+
+def walk_coro_stack(coro):
+    """Walk down the coroutine stack, starting at *coro*.
+
+    Supports coroutines and generators.
+    """
+    while coro is not None:
+        try:
+            f = getattr(coro, 'cr_frame')
+            coro = coro.cr_await
+        except AttributeError:
+            try:
+                f = getattr(coro, 'gi_frame')
+                coro = coro.gi_yieldfrom
+            except AttributeError:
+                f = None
+                coro = None
+        if f is not None:
+            yield (f, f.f_lineno)
+
+
+def extract_coro_stack(coro, limit=None):
+    """Create a list of pre-processed entries from the coroutine stack.
+
+    This is based on :func:`traceback.extract_tb`.
+
+    If *limit* is omitted or ``None``, all entries are extracted.
+    The list is a :class:`traceback.StackSummary` object, and
+    each entry in the list is a :class:`traceback.FrameSummary` object
+    containing attributes ``filename``, ``lineno``, ``name``, and ``line``
+    representing the information that is usually printed for a stack
+    trace.  The line is a string with leading and trailing
+    whitespace stripped; if the source is not available it is ``None``.
+    """
+    return traceback.StackSummary.extract(walk_coro_stack(coro), limit=limit)

@@ -39,10 +39,28 @@ static int releases = 0;
 
 static int sim_ending = 0;
 
-#include "simulatormodule.h"
 #include <cocotb_utils.h>     // COCOTB_UNUSED
 #include <type_traits>
+#include <Python.h>
+#include "gpi_logging.h"
+#include "gpi.h"
 
+// This file defines the routines available to Python
+
+#define COCOTB_ACTIVE_ID        0xC0C07B        // User data flag to indicate callback is active
+#define COCOTB_INACTIVE_ID      0xDEADB175      // User data flag set when callback has been de-registered
+
+#define MODULE_NAME "simulator"
+
+// callback user data
+struct callback_data {
+    PyThreadState *_saved_thread_state; // Thread state of the calling thread FIXME is this required?
+    uint32_t id_value;                  // COCOTB_ACTIVE_ID or COCOTB_INACTIVE_ID
+    PyObject *function;                 // Function to call when the callback fires
+    PyObject *args;                     // The arguments to call the function with
+    PyObject *kwargs;                   // Keyword arguments to call the function with
+    gpi_sim_hdl cb_hdl;
+};
 
 /* define the extension types as templates */
 namespace {
@@ -113,7 +131,7 @@ namespace {
     // Initialize the python type slots
     template<typename gpi_hdl>
     PyTypeObject fill_common_slots() {
-        PyTypeObject type;
+        PyTypeObject type = {};
         type.ob_base = {PyObject_HEAD_INIT(NULL) 0};
         type.tp_basicsize = sizeof(gpi_hdl_Object<gpi_hdl>);
         type.tp_repr = (reprfunc)gpi_hdl_repr<gpi_hdl>;
@@ -255,6 +273,7 @@ err:
 static PyObject *log_msg(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
+
     const char *name;
     const char *path;
     const char *msg;
@@ -294,7 +313,11 @@ static callback_data *callback_data_new(PyObject *func, PyObject *args, PyObject
 static PyObject *register_readonly_callback(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
-    FENTER
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
 
     Py_ssize_t numargs = PyTuple_Size(args);
 
@@ -325,7 +348,6 @@ static PyObject *register_readonly_callback(PyObject *self, PyObject *args)
     gpi_cb_hdl hdl = gpi_register_readonly_callback((gpi_function_t)handle_gpi_callback, cb_data);
 
     PyObject *rv = gpi_hdl_New(hdl);
-    FEXIT
 
     return rv;
 }
@@ -334,7 +356,11 @@ static PyObject *register_readonly_callback(PyObject *self, PyObject *args)
 static PyObject *register_rwsynch_callback(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
-    FENTER
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
 
     Py_ssize_t numargs = PyTuple_Size(args);
 
@@ -366,7 +392,6 @@ static PyObject *register_rwsynch_callback(PyObject *self, PyObject *args)
         (gpi_function_t)handle_gpi_callback, cb_data);
 
     PyObject *rv = gpi_hdl_New(hdl);
-    FEXIT
 
     return rv;
 }
@@ -375,7 +400,11 @@ static PyObject *register_rwsynch_callback(PyObject *self, PyObject *args)
 static PyObject *register_nextstep_callback(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
-    FENTER
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
 
     Py_ssize_t numargs = PyTuple_Size(args);
 
@@ -407,7 +436,6 @@ static PyObject *register_nextstep_callback(PyObject *self, PyObject *args)
         (gpi_function_t)handle_gpi_callback, cb_data);
 
     PyObject *rv = gpi_hdl_New(hdl);
-    FEXIT
 
     return rv;
 }
@@ -420,7 +448,11 @@ static PyObject *register_nextstep_callback(PyObject *self, PyObject *args)
 static PyObject *register_timed_callback(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
-    FENTER
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
 
     Py_ssize_t numargs = PyTuple_Size(args);
 
@@ -467,7 +499,6 @@ static PyObject *register_timed_callback(PyObject *self, PyObject *args)
 
     // Check success
     PyObject *rv = gpi_hdl_New(hdl);
-    FEXIT
 
     return rv;
 }
@@ -480,7 +511,11 @@ static PyObject *register_timed_callback(PyObject *self, PyObject *args)
 static PyObject *register_value_change_callback(PyObject *self, PyObject *args) //, PyObject *keywds)
 {
     COCOTB_UNUSED(self);
-    FENTER
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
 
     Py_ssize_t numargs = PyTuple_Size(args);
 
@@ -523,7 +558,6 @@ static PyObject *register_value_change_callback(PyObject *self, PyObject *args) 
 
     // Check success
     PyObject *rv = gpi_hdl_New(hdl);
-    FEXIT
 
     return rv;
 }
@@ -685,6 +719,11 @@ static PyObject *get_root_handle(PyObject *self, PyObject *args)
     COCOTB_UNUSED(self);
     const char *name;
 
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
+
     if (!PyArg_ParseTuple(args, "z:get_root_handle", &name)) {
         return NULL;
     }
@@ -728,6 +767,14 @@ static PyObject *get_type_string(gpi_hdl_Object<gpi_sim_hdl> *self, PyObject *ar
 }
 
 
+static PyObject *is_running(PyObject *self, PyObject *args)
+{
+    COCOTB_UNUSED(self);
+    COCOTB_UNUSED(args);
+
+    return PyBool_FromLong(gpi_has_registered_impl());
+}
+
 // Returns a high, low, tuple of simulator time
 // Note we can never log from this function since the logging mechanism calls this to annotate
 // log messages with the current simulation time
@@ -735,6 +782,12 @@ static PyObject *get_sim_time(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
     COCOTB_UNUSED(args);
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
+
     struct sim_time local_time;
 
     if (is_python_context) {
@@ -754,11 +807,46 @@ static PyObject *get_precision(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
     COCOTB_UNUSED(args);
+
+    if (!gpi_has_registered_impl()) {
+        char const * msg = "Simulator is not available! Defaulting precision to 1 fs.";
+        if (PyErr_WarnEx(PyExc_RuntimeWarning, msg, 1) < 0) {
+            return NULL;
+        }
+        return PyLong_FromLong(-15);  // preserves old behavior
+    }
+
     int32_t precision;
 
     gpi_get_sim_precision(&precision);
 
     return PyLong_FromLong(precision);
+}
+
+static PyObject *get_simulator_product(PyObject *m, PyObject *args)
+{
+    COCOTB_UNUSED(m);
+    COCOTB_UNUSED(args);
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
+
+    return PyUnicode_FromString(gpi_get_simulator_product());
+}
+
+static PyObject *get_simulator_version(PyObject *m, PyObject *args)
+{
+    COCOTB_UNUSED(m);
+    COCOTB_UNUSED(args);
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
+
+    return PyUnicode_FromString(gpi_get_simulator_version());
 }
 
 static PyObject *get_num_elems(gpi_hdl_Object<gpi_sim_hdl> *self, PyObject *args)
@@ -788,6 +876,12 @@ static PyObject *stop_simulator(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
     COCOTB_UNUSED(args);
+
+    if (!gpi_has_registered_impl()) {
+        PyErr_SetString(PyExc_RuntimeError, "No simulator available!");
+        return NULL;
+    }
+
     gpi_sim_end();
     sim_ending = 1;
     Py_RETURN_NONE;
@@ -797,17 +891,16 @@ static PyObject *stop_simulator(PyObject *self, PyObject *args)
 static PyObject *deregister(gpi_hdl_Object<gpi_cb_hdl> *self, PyObject *args)
 {
     COCOTB_UNUSED(args);
-    FENTER
 
     gpi_deregister_callback(self->hdl);
 
-    FEXIT
     Py_RETURN_NONE;
 }
 
 static PyObject *log_level(PyObject *self, PyObject *args)
 {
     COCOTB_UNUSED(self);
+
     long l_level;
 
     if (!PyArg_ParseTuple(args, "l:log_level", &l_level)) {
@@ -827,7 +920,7 @@ static int add_module_constants(PyObject* simulator)
         PyModule_AddIntConstant(simulator, "MEMORY",    GPI_MEMORY    ) < 0 ||
         PyModule_AddIntConstant(simulator, "MODULE",    GPI_MODULE    ) < 0 ||
         PyModule_AddIntConstant(simulator, "NET",       GPI_NET       ) < 0 ||
-        PyModule_AddIntConstant(simulator, "PARAMETER", GPI_PARAMETER ) < 0 ||
+        // PyModule_AddIntConstant(simulator, "PARAMETER", GPI_PARAMETER ) < 0 ||  // Deprecated
         PyModule_AddIntConstant(simulator, "REG",       GPI_REGISTER  ) < 0 ||
         PyModule_AddIntConstant(simulator, "NETARRAY",  GPI_ARRAY     ) < 0 ||
         PyModule_AddIntConstant(simulator, "ENUM",      GPI_ENUM      ) < 0 ||
@@ -847,6 +940,137 @@ static int add_module_constants(PyObject* simulator)
     return 0;
 }
 
+// Add the extension types as entries in the module namespace
+static int add_module_types(PyObject* simulator)
+{
+    PyObject *typ;
+
+    typ = (PyObject *)&gpi_hdl_Object<gpi_sim_hdl>::py_type;
+    Py_INCREF(typ);
+    if (PyModule_AddObject(simulator, "gpi_sim_hdl", typ) < 0) {
+        Py_DECREF(typ);
+        return -1;
+    }
+
+    typ = (PyObject *)&gpi_hdl_Object<gpi_cb_hdl>::py_type;
+    Py_INCREF(typ);
+    if (PyModule_AddObject(simulator, "gpi_cb_hdl", typ) < 0) {
+        Py_DECREF(typ);
+        return -1;
+    }
+
+    typ = (PyObject *)&gpi_hdl_Object<gpi_iterator_hdl>::py_type;
+    Py_INCREF(typ);
+    if (PyModule_AddObject(simulator, "gpi_iterator_hdl", typ) < 0) {
+        Py_DECREF(typ);
+        return -1;
+    }
+
+    return 0;
+}
+
+
+/* NOTE: in the following docstrings we are specifying the parameters twice, but this is necessary.
+ * The first docstring before the long '--' line specifies the __text_signature__ that is used
+ * by the help() function. And the second after the '--' line contains type annotations used by
+ * the `autodoc_docstring_signature` setting of sphinx.ext.autodoc for generating documentation
+ * because type annotations are not supported in __text_signature__.
+ */
+
+static PyMethodDef SimulatorMethods[] = {
+    {"log_msg", log_msg, METH_VARARGS, PyDoc_STR(
+        "log_msg(name, path, funcname, lineno, msg, /)\n"
+        "--\n\n"
+        "log_msg(name: str, path: str, funcname: str, lineno: int, msg: str) -> None\n"
+        "Log a message."
+    )},
+    {"get_root_handle", get_root_handle, METH_VARARGS, PyDoc_STR(
+        "get_root_handle(name, /)\n"
+        "--\n\n"
+        "get_root_handle(name: str) -> cocotb.simulator.gpi_sim_hdl\n"
+        "Get the root handle."
+    )},
+    {"register_timed_callback", register_timed_callback, METH_VARARGS, PyDoc_STR(
+        "register_timed_callback(time, func, /, *args)\n"
+        "--\n\n"
+        "register_timed_callback(time: int, func: Callable[..., None], *args: Any) -> cocotb.simulator.gpi_cb_hdl\n"
+        "Register a timed callback."
+    )},
+    {"register_value_change_callback", register_value_change_callback, METH_VARARGS, PyDoc_STR(
+        "register_value_change_callback(signal, func, edge, /, *args)\n"
+        "--\n\n"
+        "register_value_change_callback(signal: cocotb.simulator.gpi_sim_hdl, func: Callable[..., None], edge: int, *args: Any) -> cocotb.simulator.gpi_cb_hdl\n"
+        "Register a signal change callback."
+    )},
+    {"register_readonly_callback", register_readonly_callback, METH_VARARGS, PyDoc_STR(
+        "register_readonly_callback(func, /, *args)\n"
+        "--\n\n"
+        "register_readonly_callback(func: Callable[..., None], *args: Any) -> cocotb.simulator.gpi_cb_hdl\n"
+        "Register a callback for the read-only section."
+    )},
+    {"register_nextstep_callback", register_nextstep_callback, METH_VARARGS, PyDoc_STR(
+        "register_nextstep_callback(func, /, *args)\n"
+        "--\n\n"
+        "register_nextstep_callback(func: Callable[..., None], *args: Any) -> cocotb.simulator.gpi_cb_hdl\n"
+        "Register a callback for the NextSimTime callback."
+    )},
+    {"register_rwsynch_callback", register_rwsynch_callback, METH_VARARGS, PyDoc_STR(
+        "register_rwsynch_callback(func, /, *args)\n"
+        "--\n\n"
+        "register_rwsynch_callback(func: Callable[..., None], *args: Any) -> cocotb.simulator.gpi_cb_hdl\n"
+        "Register a callback for the read-write section."
+    )},
+    {"stop_simulator", stop_simulator, METH_VARARGS, PyDoc_STR(
+        "stop_simulator()\n"
+        "--\n\n"
+        "stop_simulator() -> None\n"
+        "Instruct the attached simulator to stop. Users should not call this function."
+    )},
+    {"log_level", log_level, METH_VARARGS, PyDoc_STR(
+        "log_level(level, /)\n"
+        "--\n\n"
+        "log_level(level: int) -> None\n"
+        "Set the log level for GPI."
+    )},
+    {"is_running", is_running, METH_NOARGS, PyDoc_STR(
+        "is_running()\n"
+        "--\n\n"
+        "is_running() -> bool\n"
+        "Returns ``True`` if the caller is running within a simulator.\n"
+        "\n"
+        ".. versionadded:: 1.4"
+    )},
+    {"get_sim_time", get_sim_time, METH_NOARGS, PyDoc_STR(
+        "get_sim_time()\n"
+        "--\n\n"
+        "get_sim_time() -> Tuple[int, int]\n"
+        "Get the current simulation time.\n"
+        "\n"
+        "Time is represented as a tuple of 32 bit integers ([low32, high32]) comprising a single 64 bit integer."
+    )},
+    {"get_precision", get_precision, METH_NOARGS, PyDoc_STR(
+        "get_precision()\n"
+        "--\n\n"
+        "get_precision() -> int\n"
+        "Get the precision of the simulator in powers of 10.\n"
+        "\n"
+        "For example, if ``-12`` is returned, the simulator's time precision is 10**-12 or 1 ps."
+    )},
+    {"get_simulator_product", get_simulator_product, METH_NOARGS, PyDoc_STR(
+        "get_simulator_product()\n"
+        "--\n\n"
+        "get_simulator_product() -> str\n"
+        "Get the simulator's product string."
+    )},
+    {"get_simulator_version", get_simulator_version, METH_NOARGS, PyDoc_STR(
+        "get_simulator_version()\n"
+        "--\n\n"
+        "get_simulator_version() -> str\n"
+        "Get the simulator's product version string."
+    )},
+    {NULL, NULL, 0, NULL}        /* Sentinel */
+};
+
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     MODULE_NAME,
@@ -858,6 +1082,13 @@ static struct PyModuleDef moduledef = {
     NULL,
     NULL
 };
+
+#if defined(__linux__) || defined(__APPLE__)
+// Only required for Python < 3.9, default for 3.9+ (bpo-11410)
+#pragma GCC visibility push(default)
+PyMODINIT_FUNC PyInit_simulator(void);
+#pragma GCC visibility pop
+#endif
 
 PyMODINIT_FUNC PyInit_simulator(void)
 {
@@ -881,67 +1112,175 @@ PyMODINIT_FUNC PyInit_simulator(void)
         Py_DECREF(simulator);
         return NULL;
     }
+
+    if (add_module_types(simulator) < 0) {
+        Py_DECREF(simulator);
+        return NULL;
+    }
+
     return simulator;
 }
 
+/* NOTE: in the following docstrings we are specifying the parameters twice, but this is necessary.
+ * The first docstring before the long '--' line specifies the __text_signature__ that is used
+ * by the help() function. And the second after the '--' line contains type annotations used by
+ * the `autodoc_docstring_signature` setting of sphinx.ext.autodoc for generating documentation
+ * because type annotations are not supported in __text_signature__.
+ */
+
 static PyMethodDef gpi_sim_hdl_methods[] = {
     {"get_signal_val_long",
-        (PyCFunction)get_signal_val_long, METH_NOARGS,
-        "Get the value of a signal as a long"},
+        (PyCFunction)get_signal_val_long, METH_NOARGS, PyDoc_STR(
+            "get_signal_val_long($self)\n"
+            "--\n\n"
+            "get_signal_val_long() -> int\n"
+            "Get the value of a signal as an integer."
+        )
+    },
     {"get_signal_val_str",
-        (PyCFunction)get_signal_val_str, METH_NOARGS,
-        "Get the value of a signal as an ASCII string"},
+        (PyCFunction)get_signal_val_str, METH_NOARGS, PyDoc_STR(
+            "get_signal_val_str($self)\n"
+            "--\n\n"
+            "get_signal_val_str() -> bytes\n"
+            "Get the value of a signal as a byte string."
+        )
+    },
     {"get_signal_val_binstr",
-        (PyCFunction)get_signal_val_binstr, METH_NOARGS,
-        "Get the value of a signal as a binary string"},
+        (PyCFunction)get_signal_val_binstr, METH_NOARGS, PyDoc_STR(
+            "get_signal_val_binstr($self)\n"
+            "--\n\n"
+            "get_signal_val_binstr() -> str\n"
+            "Get the value of a logic vector signal as a string of (``0``, ``1``, ``X``, etc.), one element per character."
+        )
+    },
     {"get_signal_val_real",
-        (PyCFunction)get_signal_val_real, METH_NOARGS,
-        "Get the value of a signal as a double precision float"},
+        (PyCFunction)get_signal_val_real, METH_NOARGS, PyDoc_STR(
+            "get_signal_val_real($self)\n"
+            "--\n\n"
+            "get_signal_val_real() -> float\n"
+            "Get the value of a signal as a float."
+        )
+    },
     {"set_signal_val_long",
-        (PyCFunction)set_signal_val_long, METH_VARARGS,
-        "Set the value of a signal using a long"},
+        (PyCFunction)set_signal_val_long, METH_VARARGS, PyDoc_STR(
+            "set_signal_val_long($self, action, value, /)\n"
+            "--\n\n"
+            "set_signal_val_long(action: int, value: int) -> None\n"
+            "Set the value of a signal using an integer.\n"
+        )
+    },
     {"set_signal_val_str",
-        (PyCFunction)set_signal_val_str, METH_VARARGS,
-        "Set the value of a signal using an NUL-terminated 8-bit string"},
+        (PyCFunction)set_signal_val_str, METH_VARARGS, PyDoc_STR(
+            "set_signal_val_str($self, action, value, /)\n"
+            "--\n\n"
+            "set_signal_val_str(action: int, value: bytes) -> None\n"
+            "Set the value of a signal using a user-encoded string."
+        )
+    },
     {"set_signal_val_binstr",
-        (PyCFunction)set_signal_val_binstr, METH_VARARGS,
-        "Set the value of a signal using a string with a character per bit"},
+        (PyCFunction)set_signal_val_binstr, METH_VARARGS, PyDoc_STR(
+            "set_signal_val_binstr($self, action, value, /)\n"
+            "--\n\n"
+            "set_signal_val_binstr(action: int, value: str) -> None\n"
+            "Set the value of a logic vector signal using a string of (``0``, ``1``, ``X``, etc.), one element per character."
+        )
+    },
     {"set_signal_val_real",
-        (PyCFunction)set_signal_val_real, METH_VARARGS,
-        "Set the value of a signal using a double precision float"},
+        (PyCFunction)set_signal_val_real, METH_VARARGS, PyDoc_STR(
+            "set_signal_val_real($self, action, value, /)\n"
+            "--\n\n"
+            "set_signal_val_real(action: int, value: float) -> None\n"
+            "Set the value of a signal using a float."
+        )
+    },
     {"get_definition_name",
-        (PyCFunction)get_definition_name, METH_NOARGS,
-        "Get the name of a GPI object's definition"},
+        (PyCFunction)get_definition_name, METH_NOARGS, PyDoc_STR(
+            "get_definition_name($self)\n"
+            "--\n\n"
+            "get_definition_name() -> str\n"
+            "Get the name of a GPI object's definition."
+        )
+    },
     {"get_definition_file",
-        (PyCFunction)get_definition_file, METH_NOARGS,
-        "Get the file that sources the object's definition"},
+        (PyCFunction)get_definition_file, METH_NOARGS, PyDoc_STR(
+            "get_definition_file($self)\n"
+            "--\n\n"
+            "get_definition_file() -> str\n"
+            "Get the file that sources the object's definition."
+        )
+    },
     {"get_handle_by_name",
-        (PyCFunction)get_handle_by_name, METH_VARARGS,
-        "Get handle of a named object"},
+        (PyCFunction)get_handle_by_name, METH_VARARGS, PyDoc_STR(
+            "get_handle_by_name($self, name, /)\n"
+            "--\n\n"
+            "get_handle_by_name(name: str) -> cocotb.simulator.gpi_sim_hdl\n"
+            "Get a handle to a child object by name."
+        )
+    },
     {"get_handle_by_index",
-        (PyCFunction)get_handle_by_index, METH_VARARGS,
-        "Get handle of a object at an index in a parent"},
+        (PyCFunction)get_handle_by_index, METH_VARARGS, PyDoc_STR(
+            "get_handle_by_index($self, index, /)\n"
+            "--\n\n"
+            "get_handle_by_index(index: int) -> cocotb.simulator.gpi_sim_hdl\n"
+            "Get a handle to a child object by index."
+        )
+    },
     {"get_name_string",
-        (PyCFunction)get_name_string, METH_NOARGS,
-        "Get the name of an object as a string"},
+        (PyCFunction)get_name_string, METH_NOARGS, PyDoc_STR(
+            "get_name_string($self)\n"
+            "--\n\n"
+            "get_name_string() -> str\n"
+            "Get the name of an object as a string."
+        )
+    },
     {"get_type_string",
-        (PyCFunction)get_type_string, METH_NOARGS,
-        "Get the type of an object as a string"},
+        (PyCFunction)get_type_string, METH_NOARGS, PyDoc_STR(
+            "get_type_string($self)\n"
+            "--\n\n"
+            "get_type_string() -> str\n"
+            "Get the GPI type of an object as a string."
+        )
+    },
     {"get_type",
-        (PyCFunction)get_type, METH_NOARGS,
-        "Get the type of an object, mapped to a GPI enumeration"},
+        (PyCFunction)get_type, METH_NOARGS, PyDoc_STR(
+            "get_type($self)\n"
+            "--\n\n"
+            "get_type() -> int\n"
+            "Get the GPI type of an object as an enum."
+        )
+    },
     {"get_const",
-        (PyCFunction)get_const, METH_NOARGS,
-        "Get a flag indicating whether the object is a constant"},
+        (PyCFunction)get_const, METH_NOARGS, PyDoc_STR(
+            "get_const($self)\n"
+            "--\n\n"
+            "get_const() -> bool\n"
+            "Return ``True`` if the object is a constant."
+        )
+    },
     {"get_num_elems",
-        (PyCFunction)get_num_elems, METH_NOARGS,
-        "Get the number of elements contained in the handle"},
+        (PyCFunction)get_num_elems, METH_NOARGS, PyDoc_STR(
+            "get_num_elems($self)\n"
+            "--\n\n"
+            "get_num_elems() -> int\n"
+            "Get the number of elements contained in the handle."
+        )
+    },
     {"get_range",
-        (PyCFunction)get_range, METH_NOARGS,
-        "Get the range of elements (tuple) contained in the handle, returns None if not indexable"},
+        (PyCFunction)get_range, METH_NOARGS, PyDoc_STR(
+            "get_range($self)\n"
+            "--\n\n"
+            "get_range() -> Tuple[int, int]\n"
+            "Get the range of elements (tuple) contained in the handle, return ``None`` if not indexable."
+        )
+    },
     {"iterate",
-        (PyCFunction)iterate, METH_VARARGS,
-        "Get an iterator handle to loop over all members in an object"},
+        (PyCFunction)iterate, METH_VARARGS, PyDoc_STR(
+            "iterate($self, mode, /)\n"
+            "--\n\n"
+            "iterate(mode: int) -> cocotb.simulator.gpi_iterator_hdl\n"
+            "Get an iterator handle to loop over all members in an object."
+        )
+    },
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
@@ -949,7 +1288,10 @@ static PyMethodDef gpi_sim_hdl_methods[] = {
 template<>
 PyTypeObject gpi_hdl_Object<gpi_sim_hdl>::py_type = []() -> PyTypeObject {
     auto type = fill_common_slots<gpi_sim_hdl>();
-    type.tp_name = "gpi_sim_hdl";
+    type.tp_name = "cocotb.simulator.gpi_sim_hdl";
+    type.tp_doc = "GPI object handle\n"
+        "\n"
+        "Contains methods for getting and setting the value of a GPI object, and introspection.";
     type.tp_methods = gpi_sim_hdl_methods;
     return type;
 }();
@@ -957,7 +1299,8 @@ PyTypeObject gpi_hdl_Object<gpi_sim_hdl>::py_type = []() -> PyTypeObject {
 template<>
 PyTypeObject gpi_hdl_Object<gpi_iterator_hdl>::py_type = []() -> PyTypeObject {
     auto type = fill_common_slots<gpi_iterator_hdl>();
-    type.tp_name = "gpi_iterator_hdl";
+    type.tp_name = "cocotb.simulator.gpi_iterator_hdl";
+    type.tp_doc = "GPI iterator handle.";
     type.tp_iter = PyObject_SelfIter;
     type.tp_iternext = (iternextfunc)next;
     return type;
@@ -965,15 +1308,20 @@ PyTypeObject gpi_hdl_Object<gpi_iterator_hdl>::py_type = []() -> PyTypeObject {
 
 static PyMethodDef gpi_cb_hdl_methods[] = {
     {"deregister",
-        (PyCFunction)deregister, METH_NOARGS,
-        "De-register this callback"},
+        (PyCFunction)deregister, METH_NOARGS, PyDoc_STR(
+            "deregister($self)\n"
+            "--\n\n"
+            "deregister() -> None\n"
+            "De-register this callback."
+        )},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
 template<>
 PyTypeObject gpi_hdl_Object<gpi_cb_hdl>::py_type = []() -> PyTypeObject {
     auto type = fill_common_slots<gpi_cb_hdl>();
-    type.tp_name = "gpi_cb_hdl";
+    type.tp_name = "cocotb.simulator.gpi_cb_hdl";
+    type.tp_doc = "GPI callback handle";
     type.tp_methods = gpi_cb_hdl_methods;
     return type;
 }();

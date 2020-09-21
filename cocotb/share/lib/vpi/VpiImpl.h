@@ -28,6 +28,13 @@
 #ifndef COCOTB_VPI_IMPL_H_
 #define COCOTB_VPI_IMPL_H_
 
+#include <exports.h>
+#ifdef COCOTBVPI_EXPORTS
+#define COCOTBVPI_EXPORT COCOTB_EXPORT
+#else
+#define COCOTBVPI_EXPORT COCOTB_IMPORT
+#endif
+
 #include "../gpi/gpi_priv.h"
 #include <vpi_user_ext.h>
 #include <sv_vpi_user.h>
@@ -65,9 +72,8 @@ static inline int __check_vpi_error(const char *file, const char *func, long lin
             loglevel = GPIWarning;
     }
 
-    gpi_log("cocotb.gpi", loglevel, file, func, line,
-            "VPI Error %s\nPROD %s\nCODE %s\nFILE %s",
-            info.message, info.product, info.code, info.file);
+    gpi_log("cocotb.gpi", loglevel, file, func, line, "VPI error");
+    gpi_log("cocotb.gpi", loglevel, info.file, info.product, info.line, info.message);
 
 #endif
     return level;
@@ -201,7 +207,7 @@ public:
 
 private:
     vpiHandle m_iterator;
-    static GpiIteratorMapping<int32_t, int32_t> iterate_over;      /* Possible mappings */
+    static std::map<int32_t, std::vector<int32_t>> iterate_over;  /* Possible mappings */
     std::vector<int32_t> *selected; /* Mapping currently in use */
     std::vector<int32_t>::iterator one2many;
 };
@@ -211,8 +217,7 @@ class VpiSingleIterator : public GpiIterator {
 public:
     VpiSingleIterator(GpiImplInterface *impl,
                       GpiObjHdl *hdl,
-                      int32_t vpitype) : GpiIterator(impl, hdl),
-                                         m_iterator(NULL)
+                      int32_t vpitype) : GpiIterator(impl, hdl)
 
     {
         vpiHandle vpi_hdl = m_parent->get_handle<vpiHandle>();
@@ -226,7 +231,7 @@ public:
     Status next_handle(std::string &name, GpiObjHdl **hdl, void **raw_hdl) override;
 
 protected:
-    vpiHandle m_iterator;
+    vpiHandle m_iterator = nullptr;
 };
 
 
@@ -241,6 +246,8 @@ public:
     void sim_end(void) override;
     void get_sim_time(uint32_t *high, uint32_t *low) override;
     void get_sim_precision(int32_t *precision) override;
+    const char *get_simulator_product() override;
+    const char *get_simulator_version() override;
 
     /* Hierarchy related */
     GpiObjHdl *get_root_handle(const char *name) override;

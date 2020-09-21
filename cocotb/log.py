@@ -52,6 +52,9 @@ _FILENAME_CHARS = 20  # noqa
 _LINENO_CHARS   = 4  # noqa
 _FUNCNAME_CHARS = 31  # noqa
 
+# Default log level if not overwritten by the user.
+_COCOTB_LOG_LEVEL_DEFAULT = "INFO"
+
 
 def default_config():
     """ Apply the default cocotb log formatting to the root logger.
@@ -67,8 +70,10 @@ def default_config():
 
     If desired, this logging configuration can be overwritten by calling
     ``logging.basicConfig(..., force=True)`` (in Python 3.8 onwards), or by
-    manually resetting the root logger instance, for which examples can be
-    found online.
+    manually resetting the root logger instance.
+    An example of this can be found in the section on :ref:`rotating-logger`.
+
+    .. versionadded:: 1.4
     """
     # construct an appropriate handler
     hdlr = logging.StreamHandler(sys.stdout)
@@ -78,26 +83,31 @@ def default_config():
     else:
         hdlr.setFormatter(SimLogFormatter())
 
-
     logging.setLoggerClass(SimBaseLog)  # For backwards compatibility
     logging.basicConfig()
     logging.getLogger().handlers = [hdlr]  # overwrite default handlers
 
     # apply level settings for cocotb
     log = logging.getLogger('cocotb')
-    level = os.getenv("COCOTB_LOG_LEVEL", "INFO")
+
     try:
-        _default_log = getattr(logging, level)
-    except AttributeError:
-        log.error("Unable to set logging level to %r" % level)
-        _default_log = logging.INFO
-    log.setLevel(_default_log)
+        # All log levels are upper case, convert the user input for convenience.
+        level = os.environ["COCOTB_LOG_LEVEL"].upper()
+    except KeyError:
+        level = _COCOTB_LOG_LEVEL_DEFAULT
+
+    try:
+        log.setLevel(level)
+    except ValueError:
+        valid_levels = ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG')
+        raise ValueError("Invalid log level %r passed through the "
+                         "COCOTB_LOG_LEVEL environment variable. Valid log "
+                         "levels: %s" % (level, ', '.join(valid_levels)))
 
     # Notify GPI of log level, which it uses as an optimization to avoid
     # calling into Python.
-    if "COCOTB_SIM" in os.environ:
-        from cocotb import simulator
-        simulator.log_level(_default_log)
+    from cocotb import simulator
+    simulator.log_level(log.getEffectiveLevel())
 
 
 class SimBaseLog(logging.getLoggerClass()):
@@ -135,11 +145,13 @@ class SimTimeContextFilter(logging.Filter):
     This uses the approach described in the :ref:`Python logging cookbook <python:filters-contextual>`.
 
     This adds the :attr:`~logging.LogRecord.created_sim_time` attribute.
+
+    .. versionadded:: 1.4
     """
 
     # needed to make our docs render well
     def __init__(self):
-        """ Takes no arguments """
+        """"""
         super().__init__()
 
     def filter(self, record):
@@ -189,9 +201,9 @@ class SimLogFormatter(logging.Formatter):
         prefix = sim_time_str.rjust(11) + ' ' + level + ' '
         if not _suppress:
             prefix += self.ljust(record.name, _RECORD_CHARS) + \
-                      self.rjust(os.path.split(record.filename)[1], _FILENAME_CHARS) + \
-                      ':' + self.ljust(str(record.lineno), _LINENO_CHARS) + \
-                      ' in ' + self.ljust(str(record.funcName), _FUNCNAME_CHARS) + ' '
+                self.rjust(os.path.split(record.filename)[1], _FILENAME_CHARS) + \
+                ':' + self.ljust(str(record.lineno), _LINENO_CHARS) + \
+                ' in ' + self.ljust(str(record.funcName), _FUNCNAME_CHARS) + ' '
 
         # these lines are copied from the builtin logger
         if record.exc_info:

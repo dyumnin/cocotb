@@ -33,6 +33,7 @@ import warnings
 
 resolve_x_to = os.getenv('COCOTB_RESOLVE_X', "VALUE_ERROR")
 
+
 def resolve(string):
     for char in BinaryValue._resolve_to_0:
         string = string.replace(char, "0")
@@ -126,16 +127,16 @@ class BinaryValue:
         self._n_bits = n_bits
 
         self._convert_to = {
-                            BinaryRepresentation.UNSIGNED         : self._convert_to_unsigned   ,
-                            BinaryRepresentation.SIGNED_MAGNITUDE : self._convert_to_signed_mag ,
-                            BinaryRepresentation.TWOS_COMPLEMENT  : self._convert_to_twos_comp  ,
-                            }
+            BinaryRepresentation.UNSIGNED         : self._convert_to_unsigned   ,
+            BinaryRepresentation.SIGNED_MAGNITUDE : self._convert_to_signed_mag ,
+            BinaryRepresentation.TWOS_COMPLEMENT  : self._convert_to_twos_comp  ,
+        }
 
         self._convert_from = {
-                            BinaryRepresentation.UNSIGNED         : self._convert_from_unsigned   ,
-                            BinaryRepresentation.SIGNED_MAGNITUDE : self._convert_from_signed_mag ,
-                            BinaryRepresentation.TWOS_COMPLEMENT  : self._convert_from_twos_comp  ,
-                            }
+            BinaryRepresentation.UNSIGNED         : self._convert_from_unsigned   ,
+            BinaryRepresentation.SIGNED_MAGNITUDE : self._convert_from_signed_mag ,
+            BinaryRepresentation.TWOS_COMPLEMENT  : self._convert_from_twos_comp  ,
+        }
 
         if value is not None:
             self.assign(value)
@@ -236,12 +237,12 @@ class BinaryValue:
             else:
                 rv = '0' * (self._n_bits - l) + x
         elif l > self._n_bits:
-            print("WARNING: truncating value to match requested number of bits "
-                  "(%d -> %d)" % (l, self._n_bits))
             if self.big_endian:
                 rv = x[l - self._n_bits:]
             else:
                 rv = x[:l - self._n_bits]
+            warnings.warn("{}-bit value requested, truncating value {!r} ({} bits) to {!r}".format(
+                self._n_bits, x, l, rv), category=RuntimeWarning, stacklevel=3)
         return rv
 
     def _adjust_signed_mag(self, x):
@@ -257,12 +258,12 @@ class BinaryValue:
                 rv = '0' * (self._n_bits - 1 - l) + x[1:]
                 rv = x[0] + rv
         elif l > self._n_bits:
-            print("WARNING: truncating value to match requested number of bits "
-                  "(%d -> %d)" % (l, self._n_bits))
             if self.big_endian:
                 rv = x[l - self._n_bits:]
             else:
                 rv = x[:-(l - self._n_bits)]
+            warnings.warn("{}-bit value requested, truncating value {!r} ({} bits) to {!r}".format(
+                self._n_bits, x, l, rv), category=RuntimeWarning, stacklevel=3)
         else:
             rv = x
         return rv
@@ -277,12 +278,12 @@ class BinaryValue:
             else:
                 rv = x[0] * (self._n_bits - l) + x
         elif l > self._n_bits:
-            print("WARNING: truncating value to match requested number of bits "
-                  "(%d -> %d)" % (l, self._n_bits))
             if self.big_endian:
                 rv = x[l - self._n_bits:]
             else:
                 rv = x[:-(l - self._n_bits)]
+            warnings.warn("{}-bit value requested, truncating value {!r} ({} bits) to {!r}".format(
+                self._n_bits, x, l, rv), category=RuntimeWarning, stacklevel=3)
         else:
             rv = x
         return rv
@@ -379,9 +380,10 @@ class BinaryValue:
             else:
                 self._str = "0" * (self._n_bits - l) + self._str
         elif l > self._n_bits:
-            print("WARNING: truncating value to match requested number of bits "
-                  "(%d -> %d)" % (l, self._n_bits))
-            self._str = self._str[l - self._n_bits:]
+            rv = self._str[l - self._n_bits:]
+            warnings.warn("{}-bit value requested, truncating value {!r} ({} bits) to {!r}".format(
+                self._n_bits, self._str, l, rv), category=RuntimeWarning, stacklevel=3)
+            self._str = rv
 
     get_buff = buff.fget
     set_buff = buff.fset
@@ -714,6 +716,7 @@ class BinaryValue:
                 self.binstr = self.binstr[:index] + val + self.binstr[index + 1:]
             else:
                 self.binstr = self.binstr[0:self._n_bits-index-1] + val + self.binstr[self._n_bits-index:self._n_bits]
+
 
 if __name__ == "__main__":
     import doctest

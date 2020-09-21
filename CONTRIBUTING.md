@@ -43,7 +43,8 @@ Follow the steps below to get your changes merged, i.e. integrated into the main
    If any of them turns "red," i.e. reports a failure, you most likely need to fix your code before it can be merged.
 7. The pull request needs to be reviewed by at least one maintainer.
    We aim to give feedback to all pull requests within a week, but as so often, life can get in the way.
-   If you receive no feedback from a maintainer within that time, please contact him/her directly (e.g. on [Gitter](https://gitter.im/cocotb) or email). You can find a [list of all maintainers](#maintainers) and their main area of expertise [below](#maintainers).
+   If you receive no feedback from a maintainer within that time, please contact them directly (e.g. on [Gitter](https://gitter.im/cocotb) or email).
+   You can find a [list of all maintainers](#maintainers) below.
    If a maintainer asks you to explain or modify code, try to do so.
 8. Once your code has at least one positive review from a maintainer and no maintainer strongly objects it your code is ready to be merged into the `master` branch.
 
@@ -72,12 +73,25 @@ All changes which should go into the main codebase of cocotb must follow this se
      Use this text to discuss things which are not obvious from the code, especially *why* changes were made.
      Include the GitHub issue number (if one exists) in the form "Fixes #nnn" ([read more about that](https://help.github.com/articles/closing-issues-using-keywords/)).
      Keep each description line below 72 characters.
-- Use the following header for new files:
+- Use the following header for new non-example files:
   ```python
   # Copyright cocotb contributors
   # Licensed under the Revised BSD License, see LICENSE for details.
   # SPDX-License-Identifier: BSD-3-Clause
   ```
+- Use the following header for new example files:
+  ```python
+  # This file is public domain, it can be freely copied without restrictions.
+  # SPDX-License-Identifier: CC0-1.0
+  ```
+
+Running tests locally
+---------------------
+
+Our tests are managed by `tox`, which runs both `pytest` and our system of makefiles.
+This exercises the contents of both the `tests` and `examples` directories.
+`tox` supports the usage of the environment variables `SIM` and `TOPLEVEL_LANG` to direct how to run the regression.
+
 
 Managing of Issues and Pull Requests
 ------------------------------------
@@ -89,23 +103,54 @@ The `type` labels define the type of issue or PR:
 - `type:bug`: a bug in existing functionality
 - `type:feature`: new functionality
 - `type:question`: a support question
+- `type:cleanup`: cleanup or refactoring on code, documentation, or other areas
+- `type:deprecation`: API that should warn and eventually be removed
 
 The `status` labels give a quick impression of the current status of the issue or PR:
 - `status:worksforme`: the issue it not reproducible, or intended behavior (i.e. not a bug)
-- `status:on-hold`: further progress is blocked by a dependency, e.g. other code which must be commited first.
-- `status:needinfo`: feedback from someone is required. The issue/PR text gives more details.
+- `status:blocked`: further progress is blocked by a dependency, e.g. other code which must be commited first.
+- `status:needs-info`: feedback from someone is required. The issue/PR text gives more details.
 - `status:duplicate`: the same issue is already being handled in another issue/PR.
+- `status:close?`: issues which can probably be closed, but need a second pair of eyes
+- `status:needs-proprietary-testing`: Help needed testing on a proprietary tool
+- `status:out-of-scope`: An issue or PR that was closed because the feature or bug was deemed to be out of scope
 
 For the use in pull requests the following additional status labels are defined:
-- `status:review-needed`: this PR needs at least one review
+- `status:needs-review`: this PR needs at least one review
 - `status:changes-requested`: changes are requested to the code
 - `status:ready-for-merge`: this PR is ready (according to the [Patch Requirements](#patch-requirements)) to be merged
+- `status:needs-rebase`: needs a git rebase
+- `status:needs-newsfragment`: Needs a towncrier newsfragment for the changelog
 
 The `category` labels help maintainers to filter issues which are relevant to their area of expertise:
-- `category:windows`: Microsoft Windows-specific issues
+- `category:OS:MacOS`: Mac OS/OS X specific issues
+- `category:OS:Linux`: Linux specific issues
+- `category:OS:Windows`: Microsoft Windows-specific issues
 - `category:simulators`: simulator support, including VPI/GPI/etc.
+- `category:simulators:activehdl`: Aldec Active-HDL
+- `category:simulators:cvc`: Tachyon CVC
+- `category:simulators:ghdl`: GHDL
+- `category:simulators:icarus`: Icarus Verilog (iverilog)
+- `category:simulators:ius`: Cadence Incisive (IUS)
+- `category:simulators:modelsim`: Mentor Modelsim
+- `category:simulators:questa`: Mentor Questa
+- `category:simulators:riviera`: Aldec Riviera-PRO
+- `category:simulators:vcs`: Synopsys VCS
+- `category:simulators:verilator`: Verilator
+- `category:simulators:xcelium`: Cadence Xcelium
+- `category:codebase:gpi`: relating to the GPI or one of the implementation
+- `category:codebase:pygpi`: relating to the Python wrapper around the GPI (embed library and simulator module)
+- `category:codebase:scheduler`: relating to the coroutine scheduler, triggers, or coroutine objects
+- `category:codebase:test-runner`: relating to code for automating test runs (regression manager)
+- `category:codebase:handle`: relating to handles or handle types (BinaryValue)
+- `category:codebase:project-automation`: relating to included project automation (makefiles)
+- `category:codebase:testbenching`: relating to testbenching components (Drivers, Monitors, etc.)
+- `category:building`: relating to build C/C++ libraries and extension modules
 - `category:packaging`: issues related to (PyPi) packaging, etc.
 - `category:docs`: documentation issues and fixes
+- `category:extensions`: cocotb extensions
+- `category:performance`: performance topics
+- `category:tests-ci`: continuous integration and unit tests
 
 To help new contributors find a good issue to work on one more label is used (following [GitHub standard practices](#https://help.github.com/articles/helping-new-contributors-find-your-project-with-labels/)):
 - `good first issue`: this issue is a good starting point for new contributors.
@@ -122,23 +167,22 @@ cocotb aims to keep the `master` branch always in a releasable state.
 At least four times a year an official release should be created.
 It is the job of the maintainers to find a suitable time for a release, to communicate it to the community, and to coordinate it.
 
-
 Maintainers
 -----------
 
 Cocotb uses a shared maintainer model.
 Most maintainers are experts in part of the cocotb codebase, and are primarily responsible for reviews in this area.
 
-- Julius Baxter (@juliusbaxter)
-- Luke Darnell (@lukedarnell)
+- Kaleb Barrett (@ktbarrett)
 - Tomasz Hemperek (@themperek)
-- Chris Higgs (@chiggs).
-  Founder of cocotb.
-- Stuart Hodgson (@stuarthodgson).
-  Founder of cocotb.
 - Colin Marquardt (@cmarqu)
 - Philipp Wagner (@imphil)
 - Eric Wieser (@eric-wieser)
+
+Founders
+
+- Chris Higgs (@chiggs)
+- Stuart Hodgson (@stuarthodgson)
 
 Code of Conduct
 ---------------

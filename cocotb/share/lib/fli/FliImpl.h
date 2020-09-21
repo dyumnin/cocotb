@@ -28,6 +28,13 @@
 #ifndef COCOTB_FLI_IMPL_H_
 #define COCOTB_FLI_IMPL_H_
 
+#include <exports.h>
+#ifdef COCOTBFLI_EXPORTS
+#define COCOTBFLI_EXPORT COCOTB_EXPORT
+#else
+#define COCOTBFLI_EXPORT COCOTB_IMPORT
+#endif
+
 #include "../gpi/gpi_priv.h"
 #include "mti.h"
 
@@ -35,7 +42,7 @@
 #include <map>
 
 extern "C" {
-void cocotb_init();
+COCOTBFLI_EXPORT void cocotb_init();
 void handle_fli_callback(void *data);
 }
 
@@ -162,22 +169,16 @@ protected:
 
 class FliObjHdl : public GpiObjHdl, public FliObj {
 public:
-    FliObjHdl(GpiImplInterface *impl,
-              void *hdl,
-              gpi_objtype_t objtype,
-              int acc_type,
-              int acc_full_type) :
-                  GpiObjHdl(impl, hdl, objtype, false),
-                  FliObj(acc_type, acc_full_type) { }
-
-    FliObjHdl(GpiImplInterface *impl,
-              void *hdl,
-              gpi_objtype_t objtype,
-              int acc_type,
-              int acc_full_type,
-              bool is_const) :
-                  GpiObjHdl(impl, hdl, objtype, is_const),
-                  FliObj(acc_type, acc_full_type) { }
+    FliObjHdl(
+        GpiImplInterface *impl,
+        void *hdl,
+        gpi_objtype_t objtype,
+        int acc_type,
+        int acc_full_type,
+        bool is_const = false
+    ) :
+        GpiObjHdl(impl, hdl, objtype, is_const),
+        FliObj(acc_type, acc_full_type) { }
 
 
     int initialise(std::string &name, std::string &fq_name) override;
@@ -225,9 +226,7 @@ public:
                    mtiTypeKindT typeKind) :
                        FliSignalObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var),
                        m_fli_type(typeKind),
-                       m_val_type(valType),
-                       m_val_buff(NULL),
-                       m_sub_hdls(NULL) { }
+                       m_val_type(valType) { }
 
     ~FliValueObjHdl() override {
         if (m_val_buff != NULL)
@@ -256,8 +255,8 @@ public:
 protected:
     mtiTypeKindT       m_fli_type;
     mtiTypeIdT         m_val_type;
-    char              *m_val_buff;
-    void             **m_sub_hdls;
+    char              *m_val_buff = nullptr;
+    void             **m_sub_hdls = nullptr;
 };
 
 class FliEnumObjHdl : public FliValueObjHdl {
@@ -271,9 +270,7 @@ public:
                   bool is_var,
                   mtiTypeIdT valType,
                   mtiTypeKindT typeKind) :
-                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind),
-                      m_value_enum(NULL),
-                      m_num_enum(0) { }
+                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind) { }
 
 
     const char* get_signal_value_str() override;
@@ -285,8 +282,8 @@ public:
     int initialise(std::string &name, std::string &fq_name) override;
 
 private:
-    char             **m_value_enum;    // Do Not Free
-    mtiInt32T          m_num_enum;
+    char             **m_value_enum = nullptr;    // Do Not Free
+    mtiInt32T          m_num_enum = 0;
 };
 
 class FliLogicObjHdl : public FliValueObjHdl {
@@ -308,11 +305,8 @@ public:
                                       acc_full_type,
                                       is_var,
                                       valType,
-                                      typeKind),
-                       m_mti_buff(NULL),
-                       m_value_enum(NULL),
-                       m_num_enum(0),
-                       m_enum_map() { }
+                                      typeKind)
+                       { }
 
     ~FliLogicObjHdl() override {
         if (m_mti_buff != NULL)
@@ -329,9 +323,9 @@ public:
 
 
 private:
-    char                      *m_mti_buff;
-    char                     **m_value_enum;    // Do Not Free
-    mtiInt32T                  m_num_enum;
+    char                      *m_mti_buff = nullptr;
+    char                     **m_value_enum = nullptr;    // Do Not Free
+    mtiInt32T                  m_num_enum = 0;
     std::map<char,mtiInt32T>   m_enum_map;
 };
 
@@ -369,8 +363,7 @@ public:
                   bool is_var,
                   mtiTypeIdT valType,
                   mtiTypeKindT typeKind) :
-                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind),
-                      m_mti_buff(NULL) { }
+                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind) { }
 
     ~FliRealObjHdl() override {
         if (m_mti_buff != NULL)
@@ -385,7 +378,7 @@ public:
     int initialise(std::string &name, std::string &fq_name) override;
 
 private:
-    double *m_mti_buff;
+    double *m_mti_buff = nullptr;
 };
 
 class FliStringObjHdl : public FliValueObjHdl {
@@ -399,8 +392,7 @@ public:
                   bool is_var,
                   mtiTypeIdT valType,
                   mtiTypeKindT typeKind) :
-                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind),
-                      m_mti_buff(NULL) { }
+                      FliValueObjHdl(impl, hdl, objtype, is_const, acc_type, acc_full_type, is_var, valType, typeKind) { }
 
     ~FliStringObjHdl() override {
         if (m_mti_buff != NULL)
@@ -415,7 +407,7 @@ public:
     int initialise(std::string &name, std::string &fq_name) override;
 
 private:
-    char *m_mti_buff;
+    char *m_mti_buff = nullptr;
 };
 
 class FliTimerCache {
@@ -433,7 +425,6 @@ private:
 class FliIterator : public GpiIterator {
 public:
     enum OneToMany {
-        OTM_END = 0,
         OTM_CONSTANTS,  // include Generics
         OTM_SIGNALS,
         OTM_REGIONS,
@@ -449,7 +440,7 @@ private:
     void populate_handle_list(OneToMany childType);
 
 private:
-    static GpiIteratorMapping<int, OneToMany> iterate_over;      /* Possible mappings */
+    static std::map<int, std::vector<OneToMany>> iterate_over;   /* Possible mappings */
     std::vector<OneToMany> *selected;                            /* Mapping currently in use */
     std::vector<OneToMany>::iterator one2many;
 
@@ -472,6 +463,8 @@ public:
     void sim_end() override;
     void get_sim_time(uint32_t *high, uint32_t *low) override;
     void get_sim_precision(int32_t *precision) override;
+    const char *get_simulator_product() override;
+    const char *get_simulator_version() override;
 
     /* Hierachy related */
     GpiObjHdl* native_check_create(std::string &name, GpiObjHdl *parent) override;

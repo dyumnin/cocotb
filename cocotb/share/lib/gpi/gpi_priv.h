@@ -29,6 +29,13 @@
 #ifndef COCOTB_GPI_PRIV_H_
 #define COCOTB_GPI_PRIV_H_
 
+#include <exports.h>
+#ifdef GPI_EXPORTS
+#define GPI_EXPORT COCOTB_EXPORT
+#else
+#define GPI_EXPORT COCOTB_IMPORT
+#endif
+
 #include <gpi.h>
 #include <embed.h>
 #include <string>
@@ -50,10 +57,9 @@ class GpiIterator;
 class GpiCbHdl;
 
 /* Base GPI class others are derived from */
-class GpiHdl {
+class GPI_EXPORT GpiHdl {
 public:
-    GpiHdl(GpiImplInterface *impl) : m_impl(impl), m_obj_hdl(NULL) { }
-    GpiHdl(GpiImplInterface *impl, void *hdl) : m_impl(impl), m_obj_hdl(hdl) { }
+    GpiHdl(GpiImplInterface *impl, void *hdl = NULL) : m_impl(impl), m_obj_hdl(hdl) { }
     virtual ~GpiHdl() = default;
 
 
@@ -79,33 +85,18 @@ protected:
 // Subsequent operations to get children go through this handle.
 // GpiObjHdl::get_handle_by_name/get_handle_by_index are really factories
 // that construct an object derived from GpiSignalObjHdl or GpiObjHdl
-class GpiObjHdl : public GpiHdl {
+class GPI_EXPORT GpiObjHdl : public GpiHdl {
 public:
-    GpiObjHdl(GpiImplInterface *impl) : GpiHdl(impl, NULL),
-                                        m_num_elems(0),
-                                        m_indexable(false),
-                                        m_range_left(-1),
-                                        m_range_right(-1),
-                                        m_fullname("unknown"),
-                                        m_type(GPI_UNKNOWN),
-                                        m_const(false) { }
-    GpiObjHdl(GpiImplInterface *impl, void *hdl, gpi_objtype_t objtype) : GpiHdl(impl, hdl),
-                                                                          m_num_elems(0),
-                                                                          m_indexable(false),
-                                                                          m_range_left(-1),
-                                                                          m_range_right(-1),
-                                                                          m_fullname("unknown"),
-                                                                          m_type(objtype),
-                                                                          m_const(false) { }
-    GpiObjHdl(GpiImplInterface *impl, void *hdl, gpi_objtype_t objtype, bool is_const) :
-                                                                          GpiHdl(impl, hdl),
-                                                                          m_num_elems(0),
-                                                                          m_indexable(false),
-                                                                          m_range_left(-1),
-                                                                          m_range_right(-1),
-                                                                          m_fullname("unknown"),
-                                                                          m_type(objtype),
-                                                                          m_const(is_const) { }
+    GpiObjHdl(
+        GpiImplInterface *impl,
+        void *hdl = nullptr,
+        gpi_objtype_t objtype = GPI_UNKNOWN,
+        bool is_const = false
+    ) :
+        GpiHdl(impl, hdl),
+        m_type(objtype),
+        m_const(is_const) { }
+
     virtual ~GpiObjHdl() = default;
 
     virtual const char* get_name_str();
@@ -131,12 +122,12 @@ public:
     virtual int initialise(std::string &name, std::string &full_name);
 
 protected:
-    int           m_num_elems;
-    bool          m_indexable;
-    int           m_range_left;
-    int           m_range_right;
+    int           m_num_elems = 0;
+    bool          m_indexable = false;
+    int           m_range_left = -1;
+    int           m_range_right = -1;
     std::string   m_name;
-    std::string   m_fullname;
+    std::string   m_fullname = "unknown";
 
     std::string   m_definition_name;
     std::string   m_definition_file;
@@ -150,11 +141,10 @@ protected:
 //
 // Identical to an object but adds additional methods for getting/setting the
 // value of the signal (which doesn't apply to non signal items in the hierarchy
-class GpiSignalObjHdl : public GpiObjHdl {
+class GPI_EXPORT GpiSignalObjHdl : public GpiObjHdl {
 public:
-    GpiSignalObjHdl(GpiImplInterface *impl, void *hdl, gpi_objtype_t objtype, bool is_const) :
-                                                         GpiObjHdl(impl, hdl, objtype, is_const),
-                                                         m_length(0) { }
+    using GpiObjHdl::GpiObjHdl;
+
     virtual ~GpiSignalObjHdl() = default;
     // Provide public access to the implementation (composition vs inheritance)
     virtual const char* get_signal_value_binstr() = 0;
@@ -162,7 +152,7 @@ public:
     virtual double get_signal_value_real() = 0;
     virtual long get_signal_value_long() = 0;
 
-    int m_length;
+    int m_length = 0;
 
     virtual int set_signal_value(const long value, gpi_set_action_t action) = 0;
     virtual int set_signal_value(const double value, gpi_set_action_t action) = 0;
@@ -178,12 +168,10 @@ public:
 /* GPI Callback handle */
 // To set a callback it needs the signal to do this on,
 // vpiHandle/vhpiHandleT for instance. The
-class GpiCbHdl : public GpiHdl {
+class GPI_EXPORT GpiCbHdl : public GpiHdl {
 public:
-    GpiCbHdl(GpiImplInterface *impl) : GpiHdl(impl, NULL),
-                                       gpi_function(NULL),
-                                       m_cb_data(NULL),
-                                       m_state(GPI_FREE) { }
+    GpiCbHdl(GpiImplInterface *impl) : GpiHdl(impl) { }
+
     // Pure virtual functions for derived classes
     virtual int arm_callback() = 0;         // Register with simulator
     virtual int run_callback();         // Entry point from simulator
@@ -199,12 +187,12 @@ public:
     virtual ~GpiCbHdl();
 
 protected:
-    int (*gpi_function)(const void *);    // GPI function to callback
-    const void *m_cb_data;                // GPI data supplied to "gpi_function"
-    gpi_cb_state_e m_state;         // GPI state of the callback through its cycle
+    int (*gpi_function)(const void *) = nullptr;    // GPI function to callback
+    const void *m_cb_data = nullptr;                // GPI data supplied to "gpi_function"
+    gpi_cb_state_e m_state = GPI_FREE;         // GPI state of the callback through its cycle
 };
 
-class GpiValueCbHdl : public virtual GpiCbHdl {
+class GPI_EXPORT GpiValueCbHdl : public virtual GpiCbHdl {
 public:
     GpiValueCbHdl(GpiImplInterface *impl, GpiSignalObjHdl *signal, int edge);
     int run_callback() override;
@@ -214,7 +202,7 @@ protected:
     GpiSignalObjHdl *m_signal;
 };
 
-class GpiIterator : public GpiHdl {
+class GPI_EXPORT GpiIterator : public GpiHdl {
 public:
     enum Status {
         NATIVE,             // Fully resolved object was created
@@ -243,42 +231,8 @@ protected:
     GpiObjHdl *m_parent;
 };
 
-template <class Ti, class Tm> class GpiIteratorMapping {
-public:
-    GpiIteratorMapping(void(*populate)(GpiIteratorMapping<Ti, Tm>&)) {
-        populate(*this);
-    }
-public:
-    std::vector<Tm>* get_options(Ti type);
-    void add_to_options(Ti type, Tm *options);
-private:
-    std::map<Ti, std::vector<Tm> > options_map;
-};
 
-template <class Ti, class Tm> void GpiIteratorMapping<Ti, Tm>::add_to_options(Ti type, Tm *options)
-{
-    std::vector<Tm> option_vec;
-    Tm *ptr = options;
-    while (*ptr) {
-        option_vec.push_back(*ptr);
-        ptr++;
-    }
-    options_map[type] = option_vec;
-}
-
-template <class Ti, class Tm> std::vector<Tm> * GpiIteratorMapping<Ti, Tm>::get_options(Ti type)
-{
-    typename std::map<Ti, std::vector<Tm> >::iterator valid = options_map.find(type);
-
-    if (options_map.end() == valid) {
-        return NULL;
-    } else {
-        return &valid->second;
-    }
-}
-
-
-class GpiImplInterface {
+class GPI_EXPORT GpiImplInterface {
 public:
     GpiImplInterface(const std::string& name) : m_name(name) { }
     const char *get_name_c();
@@ -289,6 +243,8 @@ public:
     virtual void sim_end() = 0;
     virtual void get_sim_time(uint32_t *high, uint32_t *low) = 0;
     virtual void get_sim_precision(int32_t *precision) = 0;
+    virtual const char* get_simulator_product() = 0;
+    virtual const char* get_simulator_version() = 0;
 
     /* Hierarchy related */
     virtual GpiObjHdl* native_check_create(std::string &name, GpiObjHdl *parent) = 0;
@@ -309,23 +265,26 @@ public:
 
 private:
     std::string m_name;
+protected:
+    std::string m_product;
+    std::string m_version;
 };
 
 /* Called from implementation layers back up the stack */
-int gpi_register_impl(GpiImplInterface *func_tbl);
+GPI_EXPORT int gpi_register_impl(GpiImplInterface *func_tbl);
 
-void gpi_embed_init(gpi_sim_info_t *info);
-void gpi_cleanup();
-void gpi_embed_end();
-void gpi_embed_event(gpi_event_t level, const char *msg);
-void gpi_load_extra_libs();
+GPI_EXPORT void gpi_embed_init(int argc, char const* const* argv);
+GPI_EXPORT void gpi_cleanup();
+GPI_EXPORT void gpi_embed_end();
+GPI_EXPORT void gpi_embed_event(gpi_event_t level, const char *msg);
+GPI_EXPORT void gpi_load_extra_libs();
 
 typedef void (*layer_entry_func)();
 
 /* Use this macro in an implementation layer to define an entry point */
 #define GPI_ENTRY_POINT(NAME, func) \
     extern "C" { \
-        void NAME##_entry_point()  \
+        COCOTB_EXPORT void NAME##_entry_point()  \
         { \
             func(); \
         } \

@@ -2,12 +2,14 @@
 # Licensed under the Revised BSD License, see LICENSE for details.
 # SPDX-License-Identifier: BSD-3-Clause
 
+TOPLEVEL_LANG ?= verilog
+
 include $(shell cocotb-config --makefiles)/Makefile.inc
 
-ifneq ($(VHDL_SOURCES),)
+ifneq ($(or $(filter-out $(TOPLEVEL_LANG),verilog),$(VHDL_SOURCES)),)
 
 results.xml:
-	@echo "Skipping simulation as VHDL is not supported on simulator=$(SIM)"
+	@echo "Skipping simulation as only Verilog is supported on simulator=$(SIM)"
 debug: results.xml
 clean::
 
@@ -38,7 +40,7 @@ SIM_BUILD_FLAGS += -std=c++11
 
 COMPILE_ARGS += --vpi --public-flat-rw --prefix Vtop -o $(TOPLEVEL) -LDFLAGS "-Wl,-rpath,$(LIB_DIR) -L$(LIB_DIR) -lcocotbvpi_verilator -lgpi -lcocotb -lgpilog -lcocotbutils"
 
-$(SIM_BUILD)/Vtop.mk: $(VERILOG_SOURCES) $(CUSTOM_COMPILE_DEPS) $(COCOTB_SHARE_DIR)/lib/verilator/verilator.cpp
+$(SIM_BUILD)/Vtop.mk: $(VERILOG_SOURCES) $(CUSTOM_COMPILE_DEPS) $(COCOTB_SHARE_DIR)/lib/verilator/verilator.cpp | $(SIM_BUILD)
 	$(CMD) -cc --exe -Mdir $(SIM_BUILD) -DCOCOTB_SIM=1 --top-module $(TOPLEVEL) $(COMPILE_ARGS) $(EXTRA_ARGS) $(VERILOG_SOURCES) $(COCOTB_SHARE_DIR)/lib/verilator/verilator.cpp
 
 # Compilation phase
@@ -48,8 +50,7 @@ $(SIM_BUILD)/$(TOPLEVEL): $(SIM_BUILD)/Vtop.mk
 $(COCOTB_RESULTS_FILE): $(SIM_BUILD)/$(TOPLEVEL) $(CUSTOM_SIM_DEPS)
 	-@rm -f $(COCOTB_RESULTS_FILE)
 
-	MODULE=$(MODULE) \
-        TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) COCOTB_SIM=1 \
+	MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
         $< $(PLUSARGS)
 
 	$(call check_for_results_file)
@@ -57,8 +58,7 @@ $(COCOTB_RESULTS_FILE): $(SIM_BUILD)/$(TOPLEVEL) $(CUSTOM_SIM_DEPS)
 debug: $(SIM_BUILD)/$(TOPLEVEL) $(CUSTOM_SIM_DEPS)
 	-@rm -f $(COCOTB_RESULTS_FILE)
 
-	MODULE=$(MODULE) \
-        TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) COCOTB_SIM=1 \
+	MODULE=$(MODULE) TESTCASE=$(TESTCASE) TOPLEVEL=$(TOPLEVEL) TOPLEVEL_LANG=$(TOPLEVEL_LANG) \
         gdb --args $< $(PLUSARGS)
 
 	$(call check_for_results_file)

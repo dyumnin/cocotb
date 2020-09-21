@@ -28,11 +28,11 @@
 import struct
 import zlib
 
-import cocotb
 from cocotb.triggers import RisingEdge
 from cocotb.drivers import Driver
 from cocotb.utils import hexdump
 from cocotb.binary import BinaryValue
+from cocotb.handle import SimHandleBase
 
 _XGMII_IDLE      = 0x07  # noqa
 _XGMII_START     = 0xFB  # noqa
@@ -57,12 +57,12 @@ class _XGMIIBus:
     >>> xgmii[1] = (b"\x55", False)      # Data byte
     """
 
-    def __init__(self, nbytes, interleaved=True):
+    def __init__(self, nbytes: int, interleaved: bool = True):
         """Args:
-            nbytes (int): The number of bytes transferred per clock cycle
+            nbytes: The number of bytes transferred per clock cycle
                 (usually 8 for SDR, 4 for DDR).
 
-            interleaved (bool, optional): The arrangement of control bits on the bus.
+            interleaved: The arrangement of control bits on the bus.
 
                 If interleaved we have a bus with 9-bits per
                 byte, the control bit being the 9th bit of each
@@ -76,10 +76,6 @@ class _XGMIIBus:
         self._integer = 0
         self._interleaved = interleaved
         self._nbytes = nbytes
-
-        # Default to idle
-        for i in range(nbytes):
-            self[i] = (0x07, True)
 
     def __setitem__(self, index, value):
         byte, ctrl = value
@@ -118,12 +114,12 @@ class _XGMIIBus:
 class XGMII(Driver):
     """XGMII (10 Gigabit Media Independent Interface) driver."""
 
-    def __init__(self, signal, clock, interleaved=True):
+    def __init__(self, signal: SimHandleBase, clock: SimHandleBase, interleaved: bool = True):
         """Args:
-            signal (SimHandle): The XGMII data bus.
-            clock (SimHandle): The associated clock (assumed to be
+            signal: The XGMII data bus.
+            clock: The associated clock (assumed to be
                 driven by another coroutine).
-            interleaved (bool, optional): Whether control bits are interleaved
+            interleaved: Whether control bits are interleaved
                 with the data bytes or not.
 
         If interleaved the bus is
@@ -137,18 +133,19 @@ class XGMII(Driver):
         self.clock = clock
         self.bus = _XGMIIBus(len(signal)//9, interleaved=interleaved)
         Driver.__init__(self)
+        self.idle()
 
     @staticmethod
-    def layer1(packet):
+    def layer1(packet: bytes) -> bytes:
         """Take an Ethernet packet (as a string) and format as a layer 1 packet.
 
         Pad to 64 bytes, prepend preamble and append 4-byte CRC on the end.
 
         Args:
-            packet (str): The Ethernet packet to format.
+            packet: The Ethernet packet to format.
 
         Returns:
-            str: The formatted layer 1 packet.
+            The formatted layer 1 packet.
         """
         if len(packet) < 60:
             padding = b"\x00" * (60 - len(packet))
@@ -162,11 +159,11 @@ class XGMII(Driver):
             self.bus[i] = (_XGMII_IDLE, True)
         self.signal <= self.bus.value
 
-    def terminate(self, index):
+    def terminate(self, index: int) -> None:
         """Helper function to terminate from a provided lane index.
 
         Args:
-            index (int): The index to terminate.
+            index: The index to terminate.
         """
         self.bus[index] = (_XGMII_TERMINATE, True)
 
@@ -175,12 +172,11 @@ class XGMII(Driver):
             for rem in range(index + 1, len(self.bus)):
                 self.bus[rem] = (_XGMII_IDLE, True)
 
-    @cocotb.coroutine
-    def _driver_send(self, pkt, sync=True):
+    async def _driver_send(self, pkt: bytes, sync: bool = True) -> None:
         """Send a packet over the bus.
 
         Args:
-            pkt (bytes): The Ethernet packet to drive onto the bus.
+            pkt: The Ethernet packet to drive onto the bus.
         """
         pkt = self.layer1(bytes(pkt))
 
@@ -189,7 +185,7 @@ class XGMII(Driver):
 
         clkedge = RisingEdge(self.clock)
         if sync:
-            yield clkedge
+            await clkedge
 
         self.bus[0] = (_XGMII_START, True)
 
@@ -198,7 +194,7 @@ class XGMII(Driver):
 
         pkt = pkt[len(self.bus)-1:]
         self.signal <= self.bus.value
-        yield clkedge
+        await clkedge
 
         done = False
 
@@ -213,14 +209,14 @@ class XGMII(Driver):
                 self.bus[i] = (pkt[i], False)
 
             self.signal <= self.bus.value
-            yield clkedge
+            await clkedge
             pkt = pkt[len(self.bus):]
 
         if not done:
             self.terminate(0)
             self.signal <= self.bus.value
-            yield clkedge
+            await clkedge
 
         self.idle()
-        yield clkedge
+        await clkedge
         self.log.debug("Successfully sent packet")

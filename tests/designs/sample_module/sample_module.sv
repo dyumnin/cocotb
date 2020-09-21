@@ -37,18 +37,22 @@ typedef struct packed
 } test_if;
 `endif
 
-module sample_module (
+module sample_module #(
+    parameter INT_PARAM = 12,
+    parameter REAL_PARAM = 3.14,
+    parameter STRING_PARAM = "Test"
+)(
     input                                       clk,
 
     output reg                                  stream_in_ready,
     input                                       stream_in_valid,
 `ifndef __ICARUS__
-    input real                                  stream_in_real,
+    input  real                                 stream_in_real,
     input  integer                              stream_in_int,
     output real                                 stream_out_real,
     output integer                              stream_out_int,
     input  test_if                              inout_if,
-    input string                                stream_in_string,
+    input  string                               stream_in_string,
 `endif
     input  [7:0]                                stream_in_data,
     input  [63:0]                               stream_in_data_wide,
@@ -74,9 +78,6 @@ always @(posedge clk)
 always @(stream_in_data)
     stream_out_data_comb = stream_in_data;
 
-always @(stream_in_data)
-    stream_out_data_comb = stream_in_data;
-
 always @(stream_out_ready)
     stream_in_ready      = stream_out_ready;
 
@@ -85,7 +86,7 @@ always @(stream_in_real)
     stream_out_real      = stream_in_real;
 
 always @(stream_in_int)
-    stream_out_int <= stream_in_int;
+    stream_out_int = stream_in_int;
 
 test_if struct_var;
 `endif
@@ -95,9 +96,6 @@ and test_and_gate(and_output, stream_in_ready, stream_in_valid);
 initial begin
     $dumpfile("waveform.vcd");
     $dumpvars(0,sample_module);
-
-//   TODO: Move into a separate test
-//     #500000 $fail_test("Test timed out, failing...");
 end
 
 reg[3:0] temp;
@@ -137,5 +135,13 @@ logic logic_a, logic_b, logic_c;
 assign logic_a = stream_in_valid;
 always@* logic_b = stream_in_valid;
 always@(posedge clk) logic_c <= stream_in_valid;
+
+reg _underscore_name;
+`ifdef __ICARUS__
+    // By default, a variable must be used in some way in order
+    // to be visible to VPI in Icarus Verilog.
+    // See https://github.com/steveicarus/iverilog/issues/322
+    assign _underscore_name = 0;
+`endif
 
 endmodule

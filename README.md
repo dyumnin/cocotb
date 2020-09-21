@@ -1,13 +1,10 @@
-**Your input is needed!** Please help out by taking 10 minutes to fill out this year's cocotb user survey. This survey gives the development community important feedback to steer the future of cocotb into the right direction for your use case.
-[**Take the cocotb user survey now**](https://docs.google.com/forms/d/e/1FAIpQLSfD36PldzszbuZjysss3AMvxkf6XCtSbDTVh9qVNNYDaHTZ_w/viewform).
-
----
-
 **cocotb** is a coroutine based cosimulation library for writing VHDL and Verilog testbenches in Python.
 
 [![Documentation Status](https://readthedocs.org/projects/cocotb/badge/?version=latest)](https://docs.cocotb.org/en/latest/)
 [![Build Status](https://travis-ci.org/cocotb/cocotb.svg?branch=master)](https://travis-ci.org/cocotb/cocotb)
 [![PyPI](https://img.shields.io/pypi/dm/cocotb.svg?label=PyPI%20downloads)](https://pypi.org/project/cocotb/)
+[![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-ready--to--code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/cocotb/cocotb)
+[![codecov](https://codecov.io/gh/cocotb/cocotb/branch/master/graph/badge.svg)](https://codecov.io/gh/cocotb/cocotb)
 
 * Read the [documentation](https://docs.cocotb.org)
 * Get involved:
@@ -20,8 +17,11 @@
 Cocotb requires:
 
 - Python 3.5+
-- A C++ compiler
-- An HDL simulator (such as [Icarus Verilog](http://iverilog.icarus.com/))
+- A C++11 compiler
+- An HDL simulator (such as [Icarus Verilog](https://docs.cocotb.org/en/stable/simulator_support.html#icarus-verilog),
+[Verilator](https://docs.cocotb.org/en/stable/simulator_support.html#verilator),
+[GHDL](https://docs.cocotb.org/en/stable/simulator_support.html#ghdl) or
+[other simulator](https://docs.cocotb.org/en/stable/simulator_support.html))
 
 After installing these dependencies, the latest stable version of cocotb can be installed with pip.
 
@@ -29,13 +29,17 @@ After installing these dependencies, the latest stable version of cocotb can be 
 pip install cocotb
 ```
 
-For more details, including how to install a development version of cocotb, see [the documentation](https://docs.cocotb.org/en/latest/quickstart.html#pre-requisites).
+**!!! Windows Users !!!** See [here](https://docs.cocotb.org/en/stable/install.html) for installation instructions.
+
+For more details on installation, including prerequisites, see [the documentation](https://docs.cocotb.org/en/stable/install.html).
+
+For detail on how to install the *development* version of cocotb, see [the lastest documentation](https://docs.cocotb.org/en/latest/install_devel.html#install-devel).
 
 ## Usage
 
 As a first trivial introduction to cocotb, the following example "tests" a flip-flop.
 
-First, we need a hardware design which we can test. For this example, create a file `dff.sv` with SystemVerilog code for a simple [D flip-flop](https://en.wikipedia.org/wiki/Flip-flop_(electronics)#D_flip-flop). You could also use any other language a [cocotb-supported simulator](https://docs.cocotb.org/en/latest/simulator_support.html) understands, e.g. VHDL.
+First, we need a hardware design which we can test. For this example, create a file `dff.sv` with SystemVerilog code for a simple [D flip-flop](https://en.wikipedia.org/wiki/Flip-flop_(electronics)#D_flip-flop). You could also use any other language a [cocotb-supported simulator](https://docs.cocotb.org/en/stable/simulator_support.html) understands, e.g. VHDL.
 
 ```systemverilog
 // dff.sv
@@ -103,8 +107,8 @@ For more information please see the [cocotb documentation](https://docs.cocotb.o
 
 ## Tutorials, examples and related projects
 
-* [Endian Swapper tutorial](https://docs.cocotb.org/en/latest/endian_swapper.html)
-* [Ping using TUN/TAP tutorial](https://docs.cocotb.org/en/latest/ping_tun_tap.html)
+* [Endian Swapper tutorial](https://docs.cocotb.org/en/stable/endian_swapper.html)
+* [Ping using TUN/TAP tutorial](https://docs.cocotb.org/en/stable/ping_tun_tap.html)
 * [Cocotb based USB 1.1 test suite for FPGA IP, with testbenches for a variety of open source USB cores](https://github.com/antmicro/usb-test-suite-build)
 * [Functional Coverage and Constrained Randomization Extensions for Cocotb](https://github.com/mciepluc/cocotb-coverage)
 * [UVM 1.2 port to Python](https://github.com/tpoikela/uvm-python)

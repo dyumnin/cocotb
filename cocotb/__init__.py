@@ -37,6 +37,7 @@ import threading
 import random
 import time
 import warnings
+from typing import Dict, List, Union
 
 import cocotb.handle
 import cocotb.log
@@ -47,20 +48,11 @@ from cocotb.regression import RegressionManager
 # Things we want in the cocotb namespace
 from cocotb.decorators import test, coroutine, hook, function, external  # noqa: F401
 
-# Singleton scheduler instance
-# NB this cheekily ensures a singleton since we're replacing the reference
-# so that cocotb.scheduler gives you the singleton instance and not the
-# scheduler package
-
 from ._version import __version__
 
-# GPI logging instance
-if "COCOTB_SIM" in os.environ:
 
-    # sys.path normally includes "" (the current directory), but does not appear to when python is embedded.
-    # Add it back because users expect to be able to import files in their test directory.
-    # TODO: move this to gpi_embed.cpp
-    sys.path.insert(0, "")
+def _setup_logging():
+    global log
 
     def _reopen_stream_with_buffering(stream_name):
         try:
@@ -97,22 +89,50 @@ if "COCOTB_SIM" in os.environ:
 
     del _stderr_buffer_result, _stdout_buffer_result
 
-    # From https://www.python.org/dev/peps/pep-0565/#recommended-filter-settings-for-test-runners
-    # If the user doesn't want to see these, they can always change the global
-    # warning settings in their test module.
-    if not sys.warnoptions:
-        warnings.simplefilter("default")
 
-scheduler = Scheduler()
+# Singleton scheduler instance
+# NB this cheekily ensures a singleton since we're replacing the reference
+# so that cocotb.scheduler gives you the singleton instance and not the
+# scheduler package
+
+scheduler = None  # type: cocotb.scheduler.Scheduler
 """The global scheduler instance."""
 
-regression_manager = None
+regression_manager = None  # type: cocotb.regression.RegressionManager
+"""The global regression manager instance."""
 
-plusargs = {}
-"""A dictionary of "plusargs" handed to the simulation."""
+argv = None  # type: List[str]
+"""The argument list as seen by the simulator"""
 
-# To save typing provide an alias to scheduler.add
-fork = scheduler.add
+argc = None  # type: int
+"""The length of :data:`cocotb.argv`"""
+
+plusargs = None  # type: Dict[str, Union[bool, str]]
+"""A dictionary of "plusargs" handed to the simulation. See :make:var:`PLUSARGS` for details."""
+
+LANGUAGE = os.getenv("TOPLEVEL_LANG")  # type: str
+"""The value of :make:var:`TOPLEVEL_LANG`"""
+
+SIM_NAME = None  # type: str
+"""The running simulator product information. ``None`` if :mod:`cocotb` was not loaded from a simulator"""
+
+SIM_VERSION = None  # type: str
+"""The version of the running simulator. ``None`` if :mod:`cocotb` was not loaded from a simulator"""
+
+RANDOM_SEED = None  # type: int
+"""
+The value passed to the Python default random number generator.
+See :envvar:`RANDOM_SEED` for details on how the value is computed.
+"""
+
+_library_coverage = None
+""" used for cocotb library coverage """
+
+
+def fork(coro):
+    """ Schedule a coroutine to be run concurrently. See :ref:`coroutines` for details on its use. """
+    return scheduler.add(coro)
+
 
 # FIXME is this really required?
 _rlock = threading.RLock()
@@ -123,7 +143,7 @@ def mem_debug(port):
     cocotb.memdebug.start(port)
 
 
-def _initialise_testbench(root_name):
+def _initialise_testbench(argv_):
     """Initialize testbench.
 
     This function is called after the simulator has elaborated all
@@ -137,6 +157,49 @@ def _initialise_testbench(root_name):
     """
     _rlock.acquire()
 
+    if "COCOTB_LIBRARY_COVERAGE" in os.environ:
+        import coverage
+
+        global _library_coverage
+        _library_coverage = coverage.coverage(
+            data_file=".coverage.cocotb",
+            branch=True,
+            include=["{}/*".format(os.path.dirname(__file__))])
+        _library_coverage.start()
+
+    global argc, argv
+    argv = argv_
+    argc = len(argv)
+
+    root_name = os.getenv("TOPLEVEL")
+    if root_name is not None:
+        if root_name == "":
+            root_name = None
+        elif '.' in root_name:
+            # Skip any library component of the toplevel
+            root_name = root_name.split(".", 1)[1]
+
+    # sys.path normally includes "" (the current directory), but does not appear to when python is embedded.
+    # Add it back because users expect to be able to import files in their test directory.
+    # TODO: move this to gpi_embed.cpp
+    sys.path.insert(0, "")
+
+    _setup_logging()
+
+    # From https://www.python.org/dev/peps/pep-0565/#recommended-filter-settings-for-test-runners
+    # If the user doesn't want to see these, they can always change the global
+    # warning settings in their test module.
+    if not sys.warnoptions:
+        warnings.simplefilter("default")
+
+    from cocotb import simulator
+
+    global SIM_NAME, SIM_VERSION
+    SIM_NAME = simulator.get_simulator_product().strip()
+    SIM_VERSION = simulator.get_simulator_version().strip()
+
+    cocotb.log.info("Running on {} version {}".format(SIM_NAME, SIM_VERSION))
+
     memcheck_port = os.getenv('MEMCHECK')
     if memcheck_port is not None:
         mem_debug(int(memcheck_port))
@@ -147,6 +210,9 @@ def _initialise_testbench(root_name):
     # Create the base handle type
 
     process_plusargs()
+
+    global scheduler
+    scheduler = Scheduler()
 
     # Seed the Python random number generator to make this repeatable
     global RANDOM_SEED
@@ -165,20 +231,18 @@ def _initialise_testbench(root_name):
         log.info("Seeding Python random module with supplied seed %d" % (RANDOM_SEED))
     random.seed(RANDOM_SEED)
 
-    module_str = os.getenv('MODULE')
-    test_str = os.getenv('TESTCASE')
-    hooks_str = os.getenv('COCOTB_HOOKS', '')
+    # Setup DUT object
+    from cocotb import simulator
 
-    if module_str is None:
-        raise ValueError("Environment variable MODULE, which defines the module(s) to execute, is not defined.")
+    handle = simulator.get_root_handle(root_name)
+    if not handle:
+        raise RuntimeError("Can not find root handle ({})".format(root_name))
 
-    modules = [s.strip() for s in module_str.split(',') if s.strip()]
-    hooks = [s.strip() for s in hooks_str.split(',') if s.strip()]
+    dut = cocotb.handle.SimHandle(handle)
 
+    # start Regression Manager
     global regression_manager
-
-    regression_manager = RegressionManager(root_name, modules, tests=test_str, seed=RANDOM_SEED, hooks=hooks)
-    regression_manager.initialise()
+    regression_manager = RegressionManager.from_discovery(dut)
     regression_manager.execute()
 
     _rlock.release()
@@ -187,7 +251,7 @@ def _initialise_testbench(root_name):
 
 def _sim_event(level, message):
     """Function that can be called externally to signal an event."""
-    SIM_INFO = 0
+    # SIM_INFO = 0
     SIM_TEST_FAIL = 1
     SIM_FAIL = 2
     from cocotb.result import TestFailure, SimFailure

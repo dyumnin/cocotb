@@ -29,6 +29,7 @@
 #include "VhpiImpl.h"
 #include <limits>     // numeric_limits
 #include <cinttypes>  // fixed-size int types and format strings
+#include <stdexcept>
 
 namespace {
     using bufSize_type = decltype(vhpiValueT::bufSize);
@@ -45,9 +46,12 @@ VhpiArrayObjHdl::~VhpiArrayObjHdl()
 
 VhpiObjHdl::~VhpiObjHdl()
 {
-    LOG_DEBUG("Releasing VhpiObjHdl handle at %p\n", (void *)get_handle<vhpiHandleT>());
-    if (vhpi_release_handle(get_handle<vhpiHandleT>()))
-        check_vhpi_error();
+    /* Don't release handles for pseudo-regions, as they borrow the handle of the containing region */
+    if (m_type != GPI_GENARRAY) {
+        LOG_DEBUG("Releasing VhpiObjHdl handle at %p\n", (void *)get_handle<vhpiHandleT>());
+        if (vhpi_release_handle(get_handle<vhpiHandleT>()))
+            check_vhpi_error();
+    }
 }
 
 VhpiSignalObjHdl::~VhpiSignalObjHdl()
@@ -186,7 +190,7 @@ int VhpiArrayObjHdl::initialise(std::string &name, std::string &fq_name) {
     }
 
     if (NULL == type) {
-        LOG_ERROR("Unable to get vhpiBaseType for %s", fq_name.c_str());
+        LOG_ERROR("VHPI: Unable to get vhpiBaseType for %s", fq_name.c_str());
         return -1;
     }
 
@@ -266,7 +270,7 @@ int VhpiSignalObjHdl::initialise(std::string &name, std::string &fq_name) {
     vhpiHandleT handle = GpiObjHdl::get_handle<vhpiHandleT>();
 
     if (0 > vhpi_get_value(get_handle<vhpiHandleT>(), &m_value)) {
-        LOG_ERROR("vhpi_get_value failed for %s (%s)", fq_name.c_str(), vhpi_get_str(vhpiKindStrP, handle));
+        LOG_ERROR("VHPI: vhpi_get_value failed for %s (%s)", fq_name.c_str(), vhpi_get_str(vhpiKindStrP, handle));
         return -1;
     }
 
@@ -301,7 +305,7 @@ int VhpiSignalObjHdl::initialise(std::string &name, std::string &fq_name) {
         }
 
         default: {
-            LOG_ERROR("Unable to determine property for %s (%d) format object",
+            LOG_ERROR("VHPI: Unable to determine property for %s (%d) format object",
                          ((VhpiImpl*)GpiObjHdl::m_impl)->format_to_string(m_value.format), m_value.format);
             return -1;
         }
@@ -433,14 +437,14 @@ int VhpiCbHdl::arm_callback()
 
         if (!new_hdl) {
             check_vhpi_error();
-            LOG_ERROR("VHPI: Unable to register callback a handle for VHPI type %s(%d)",
+            LOG_ERROR("VHPI: Unable to register a callback handle for VHPI type %s(%d)",
                          m_impl->reason_to_string(cb_data.reason), cb_data.reason);
             goto error;
         }
 
         cbState = (vhpiStateT)vhpi_get(vhpiStateP, new_hdl);
         if (vhpiEnable != cbState) {
-            LOG_ERROR("VHPI ERROR: Registered callback isn't enabled! Got %d\n", cbState);
+            LOG_ERROR("VHPI: Registered callback isn't enabled! Got %d\n", cbState);
             goto error;
         }
 
@@ -577,7 +581,7 @@ int VhpiSignalObjHdl::set_signal_value(long value, gpi_set_action_t action)
         case vhpiEnumVal: {
             using EnumLimits = std::numeric_limits<vhpiEnumT>;
             if ((value > EnumLimits::max()) || (value < EnumLimits::min())) {
-                LOG_ERROR("Data loss detected");
+                LOG_ERROR("VHPI: Data loss detected");
                 return -1;
             }
             m_value.value.enumv = static_cast<vhpiEnumT>(value);
@@ -587,7 +591,7 @@ int VhpiSignalObjHdl::set_signal_value(long value, gpi_set_action_t action)
         case vhpiIntVal: {
             using IntLimits = std::numeric_limits<vhpiIntT>;
             if ((value > IntLimits::max()) || (value < IntLimits::min())) {
-                LOG_ERROR("Data loss detected");
+                LOG_ERROR("VHPI: Data loss detected");
                 return -1;
             }
             m_value.value.intg = static_cast<vhpiIntT>(value);
@@ -597,7 +601,7 @@ int VhpiSignalObjHdl::set_signal_value(long value, gpi_set_action_t action)
         case vhpiCharVal: {
             using CharLimits = std::numeric_limits<vhpiCharT>;
             if ((value > CharLimits::max()) || (value < CharLimits::min())) {
-                LOG_ERROR("Data loss detected");
+                LOG_ERROR("VHPI: Data loss detected");
                 return -1;
             }
             m_value.value.ch = static_cast<vhpiCharT>(value);
@@ -675,7 +679,7 @@ int VhpiSignalObjHdl::set_signal_value_binstr(std::string &value, gpi_set_action
         }
 
         default: {
-            LOG_ERROR("VHPI: Unable to handle this format type %s",
+            LOG_ERROR("VHPI: Unable to handle this format type: %s",
                       ((VhpiImpl*)GpiObjHdl::m_impl)->format_to_string(m_value.format));
             return -1;
         }
@@ -702,7 +706,7 @@ int VhpiSignalObjHdl::set_signal_value_str(std::string &value, gpi_set_action_t 
         }
 
         default: {
-            LOG_ERROR("VHPI: Unable to handle this format type %s",
+            LOG_ERROR("VHPI: Unable to handle this format type: %s",
                       ((VhpiImpl*)GpiObjHdl::m_impl)->format_to_string(m_value.format));
             return -1;
         }
@@ -728,7 +732,7 @@ const char* VhpiSignalObjHdl::get_signal_value_binstr()
             int ret = vhpi_get_value(GpiObjHdl::get_handle<vhpiHandleT>(), &m_binvalue);
             if (ret) {
                 check_vhpi_error();
-                LOG_ERROR("Size of m_binvalue.value.str was not large enough: req=%d have=%d for type %s",
+                LOG_ERROR("VHPI: Size of m_binvalue.value.str was not large enough: req=%d have=%d for type %s",
                           ret,
                           m_binvalue.bufSize,
                           ((VhpiImpl*)GpiObjHdl::m_impl)->format_to_string(m_value.format));
@@ -746,7 +750,7 @@ const char* VhpiSignalObjHdl::get_signal_value_str()
             int ret = vhpi_get_value(GpiObjHdl::get_handle<vhpiHandleT>(), &m_value);
             if (ret) {
                 check_vhpi_error();
-                LOG_ERROR("Size of m_value.value.str was not large enough req=%d have=%d for type %s",
+                LOG_ERROR("VHPI: Size of m_value.value.str was not large enough: req=%d have=%d for type %s",
                           ret,
                           m_value.bufSize,
                           ((VhpiImpl*)GpiObjHdl::m_impl)->format_to_string(m_value.format));
@@ -754,7 +758,7 @@ const char* VhpiSignalObjHdl::get_signal_value_str()
             break;
         }
         default: {
-            LOG_ERROR("Reading strings not valid for this handle");
+            LOG_ERROR("VHPI: Reading strings not valid for this handle");
             return "";
         }
     }
@@ -769,7 +773,7 @@ double VhpiSignalObjHdl::get_signal_value_real()
 
     if (vhpi_get_value(GpiObjHdl::get_handle<vhpiHandleT>(), &m_value)) {
         check_vhpi_error();
-        LOG_ERROR("failed to get real value");
+        LOG_ERROR("VHPI: Failed to get value of type real");
     }
     return m_value.value.real;
 }
@@ -782,7 +786,7 @@ long VhpiSignalObjHdl::get_signal_value_long()
 
     if (vhpi_get_value(GpiObjHdl::get_handle<vhpiHandleT>(), &value)) {
         check_vhpi_error();
-        LOG_ERROR("failed to get long value");
+        LOG_ERROR("VHPI: Failed to get value of type long");
     }
 
     return value.value.intg;
@@ -833,16 +837,11 @@ VhpiStartupCbHdl::VhpiStartupCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
 
 int VhpiStartupCbHdl::run_callback() {
     vhpiHandleT tool, argv_iter, argv_hdl;
-    gpi_sim_info_t sim_info;
     char **tool_argv = NULL;
     int tool_argc = 0;
     int i = 0;
 
     tool = vhpi_handle(vhpiTool, NULL);
-
-    sim_info.product = const_cast<char*>(static_cast<const char*>(vhpi_get_str(vhpiNameP, tool)));
-    sim_info.version = const_cast<char*>(static_cast<const char*>(vhpi_get_str(vhpiToolVersionP, tool)));
-
     if (tool) {
         tool_argc = static_cast<int>(vhpi_get(vhpiArgcP, tool));
         tool_argv = new char*[tool_argc];
@@ -856,13 +855,11 @@ int VhpiStartupCbHdl::run_callback() {
             }
             vhpi_release_handle(argv_iter);
         }
-        sim_info.argc = tool_argc;
-        sim_info.argv = tool_argv;
 
         vhpi_release_handle(tool);
     }
 
-    gpi_embed_init(&sim_info);
+    gpi_embed_init(tool_argc, tool_argv);
     delete [] tool_argv;
 
     return 0;
@@ -905,14 +902,14 @@ int VhpiTimedCbHdl::cleanup_callback()
 VhpiReadwriteCbHdl::VhpiReadwriteCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
                                                                  VhpiCbHdl(impl)
 {
-    cb_data.reason = vhpiCbRepEndOfProcesses;
+    cb_data.reason = vhpiCbRepLastKnownDeltaCycle;
     cb_data.time = &vhpi_time;
 }
 
 VhpiReadOnlyCbHdl::VhpiReadOnlyCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
                                                                VhpiCbHdl(impl)
 {
-    cb_data.reason = vhpiCbRepLastKnownDeltaCycle;
+    cb_data.reason = vhpiCbRepEndOfTimeStep;
     cb_data.time = &vhpi_time;
 }
 
@@ -923,10 +920,9 @@ VhpiNextPhaseCbHdl::VhpiNextPhaseCbHdl(GpiImplInterface *impl) : GpiCbHdl(impl),
     cb_data.time = &vhpi_time;
 }
 
-void vhpi_mappings(GpiIteratorMapping<vhpiClassKindT, vhpiOneToManyT> &map)
-{
-    /* vhpiRootInstK */
-    vhpiOneToManyT root_options[] = {
+decltype(VhpiIterator::iterate_over) VhpiIterator::iterate_over = []{
+    /* for reused lists */
+    std::initializer_list<vhpiOneToManyT> root_options = {
         vhpiInternalRegions,
         vhpiSigDecls,
         vhpiVarDecls,
@@ -936,43 +932,18 @@ void vhpi_mappings(GpiIteratorMapping<vhpiClassKindT, vhpiOneToManyT> &map)
         //    vhpiIndexedNames,
         vhpiCompInstStmts,
         vhpiBlockStmts,
-        (vhpiOneToManyT)0,
     };
-    map.add_to_options(vhpiRootInstK, &root_options[0]);
-
-    /* vhpiSigDeclK */
-    vhpiOneToManyT sig_options[] = {
+    std::initializer_list<vhpiOneToManyT> sig_options = {
         vhpiIndexedNames,
         vhpiSelectedNames,
-        (vhpiOneToManyT)0,
     };
-    map.add_to_options(vhpiGenericDeclK, &sig_options[0]);
-    map.add_to_options(vhpiSigDeclK, &sig_options[0]);
-
-    /* vhpiIndexedNameK */
-    map.add_to_options(vhpiSelectedNameK, &sig_options[0]);
-    map.add_to_options(vhpiIndexedNameK, &sig_options[0]);
-
-    /* vhpiCompInstStmtK */
-    map.add_to_options(vhpiCompInstStmtK, &root_options[0]);
-
-    /* vhpiSimpleSigAssignStmtK */
-    vhpiOneToManyT simplesig_options[] = {
+    std::initializer_list<vhpiOneToManyT> simplesig_options = {
         vhpiDecls,
         vhpiInternalRegions,
         vhpiSensitivitys,
         vhpiStmts,
-        (vhpiOneToManyT)0,
     };
-    map.add_to_options(vhpiCondSigAssignStmtK, &simplesig_options[0]);
-    map.add_to_options(vhpiSimpleSigAssignStmtK, &simplesig_options[0]);
-    map.add_to_options(vhpiSelectSigAssignStmtK, &simplesig_options[0]);
-
-    /* vhpiPortDeclK */
-    map.add_to_options(vhpiPortDeclK, &sig_options[0]);
-
-    /* vhpiForGenerateK */
-    vhpiOneToManyT gen_options[] = {
+    std::initializer_list<vhpiOneToManyT> gen_options = {
         vhpiDecls,
         vhpiInternalRegions,
         vhpiSigDecls,
@@ -980,24 +951,33 @@ void vhpi_mappings(GpiIteratorMapping<vhpiClassKindT, vhpiOneToManyT> &map)
         vhpiConstDecls,
         vhpiCompInstStmts,
         vhpiBlockStmts,
-        (vhpiOneToManyT)0,
     };
-    map.add_to_options(vhpiForGenerateK, &gen_options[0]);
-    map.add_to_options(vhpiIfGenerateK, &gen_options[0]);
-    map.add_to_options(vhpiBlockStmtK, &gen_options[0]);
 
-    /* vhpiConstDeclK */
-    vhpiOneToManyT const_options[] = {
-        vhpiAttrSpecs,
-        vhpiIndexedNames,
-        vhpiSelectedNames,
-        (vhpiOneToManyT)0,
+    return decltype(VhpiIterator::iterate_over) {
+        {vhpiRootInstK, root_options},
+        {vhpiCompInstStmtK, root_options},
+
+        {vhpiGenericDeclK, sig_options},
+        {vhpiSigDeclK, sig_options},
+        {vhpiSelectedNameK, sig_options},
+        {vhpiIndexedNameK, sig_options},
+        {vhpiPortDeclK, sig_options},
+
+        {vhpiCondSigAssignStmtK, simplesig_options},
+        {vhpiSimpleSigAssignStmtK, simplesig_options},
+        {vhpiSelectSigAssignStmtK, simplesig_options},
+
+        {vhpiForGenerateK, gen_options},
+        {vhpiIfGenerateK, gen_options},
+        {vhpiBlockStmtK, gen_options},
+
+        {vhpiConstDeclK, {
+            vhpiAttrSpecs,
+            vhpiIndexedNames,
+            vhpiSelectedNames,
+        }},
     };
-    map.add_to_options(vhpiConstDeclK, &const_options[0]);
-
-}
-
-GpiIteratorMapping<vhpiClassKindT, vhpiOneToManyT> VhpiIterator::iterate_over(vhpi_mappings);
+}();
 
 VhpiIterator::VhpiIterator(GpiImplInterface *impl, GpiObjHdl *hdl) : GpiIterator(impl, hdl),
                                                                      m_iterator(NULL),
@@ -1007,9 +987,13 @@ VhpiIterator::VhpiIterator(GpiImplInterface *impl, GpiObjHdl *hdl) : GpiIterator
     vhpiHandleT vhpi_hdl = m_parent->get_handle<vhpiHandleT>();
 
     vhpiClassKindT type = (vhpiClassKindT)vhpi_get(vhpiKindP, vhpi_hdl);
-    if (NULL == (selected = iterate_over.get_options(type))) {
+    try {
+        selected = &iterate_over.at(type);
+    }
+    catch (std::out_of_range const&) {
         LOG_WARN("VHPI: Implementation does not know how to iterate over %s(%d)",
                  vhpi_get_str(vhpiKindStrP, vhpi_hdl), type);
+        selected = nullptr;
         return;
     }
 

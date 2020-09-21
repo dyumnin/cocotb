@@ -80,12 +80,6 @@ endif
 export PYTHONHOME := $(shell $(PYTHON_BIN) -c 'from distutils.sysconfig import get_config_var; print(get_config_var("prefix"))')
 
 ifeq ($(OS),Msys)
-    # On Windows there is no support for @rpath/LD_LIBRARY_PATH so we need to set PATH to find cocotb libraries
-    # https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order?redirectedfrom=MSDN#standard-search-order-for-desktop-applications
-    export PATH := $(LIB_DIR):$(PATH)
-endif
-
-ifeq ($(OS),Msys)
     to_tcl_path = $(shell cygpath -m $(1) )
 else
     to_tcl_path = $(1)
@@ -117,6 +111,17 @@ $(SIM_BUILD):
 .PHONY: regression
 regression: $(COCOTB_RESULTS_FILE)
 
+# Attempt to detect TOPLEVEL_LANG based on available sources if not set
+ifeq ($(TOPLEVEL_LANG),)
+
+ifneq ($(and $(VHDL_SOURCES),$(if $(VERILOG_SOURCES),,1),)
+	TOPLEVEL_LANG := vhdl
+else ifneq ($(and $(VERILOG_SOURCES),$(if $(VHDL_SOURCES),,1),)
+	TOPLEVEL_LANG := verilog
+endif
+
+endif
+
 else
-    $(warning "Including Makefile.inc from a user makefile is a no-op and deprecated. Remove the Makefile.inc inclusion from your makefile, and only leave the Makefile.sim include.")
+    $(warning Including Makefile.inc from a user makefile is a no-op and deprecated. Remove the Makefile.inc inclusion from your makefile, and only leave the Makefile.sim include.)
 endif # COCOTB_MAKEFILE_INC_INCLUDED

@@ -30,6 +30,7 @@
 """Common scoreboarding capability."""
 
 import logging
+import warnings
 
 from cocotb.utils import hexdump, hexdiffs
 from cocotb.log import SimLog
@@ -57,6 +58,8 @@ class Scoreboard:
         fail_immediately (bool, optional): Raise :any:`TestFailure`
             immediately when something is wrong instead of just
             recording an error. Default is ``True``.
+
+    .. deprecated:: 1.4.1
     """
 
     def __init__(self, dut, reorder_depth=0, fail_immediately=True):  # FIXME: reorder_depth needed here?
@@ -65,6 +68,12 @@ class Scoreboard:
         self.errors = 0
         self.expected = {}
         self._imm = fail_immediately
+
+        warnings.warn(
+            "This Scoreboard implementation has been deprecated and will be removed soon.\n"
+            "If this implementation works for you, copy the implementation into your project, "
+            "while following cocotb's license agreement.",
+            DeprecationWarning)
 
     @property
     def result(self):
@@ -82,8 +91,8 @@ class Scoreboard:
                                "than a list" % str(monitor))
                 continue
             if len(expected_output):
-                self.log.warn("Still expecting %d transactions on %s" %
-                              (len(expected_output), str(monitor)))
+                self.log.warning("Still expecting %d transactions on %s" %
+                                 (len(expected_output), str(monitor)))
                 for index, transaction in enumerate(expected_output):
                     self.log.info("Expecting %d:\n%s" %
                                   (index, hexdump(str(transaction))))
@@ -161,7 +170,7 @@ class Scoreboard:
                     pass
             log.warning("Difference:\n%s" % hexdiffs(strexp, strgot))
             if self._imm:
-                raise TestFailure("Received transaction differed from expected"
+                raise TestFailure("Received transaction differed from expected "
                                   "transaction")
         else:
             # Don't want to fail the test

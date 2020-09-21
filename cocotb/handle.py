@@ -32,14 +32,8 @@
 import ctypes
 import warnings
 
-import os
-
-if "COCOTB_SIM" in os.environ:
-    from cocotb import simulator
-else:
-    simulator = None
-
 import cocotb
+from cocotb import simulator
 from cocotb.binary import BinaryValue
 from cocotb.log import SimLog
 from cocotb.result import TestError
@@ -62,7 +56,7 @@ class SimHandleBase:
         "log"               :       "_log",
         "fullname"          :       "_fullname",
         "name"              :       "_name",
-        }
+    }
 
     def __init__(self, handle, path):
         """
@@ -73,18 +67,42 @@ class SimHandleBase:
             path (str): Path to this handle, ``None`` if root.
         """
         self._handle = handle
-        self._len = None
-        self._sub_handles = {}  # Dictionary of children
-        self._invalid_sub_handles = set()  # Set of invalid queries
+        self._len = None  # type: int
+        """The "length" (the number of elements) of the underlying object. For vectors this is the number of bits."""
+        self._sub_handles = {}  # type: dict
+        """Dictionary of this handle's children."""
+        self._invalid_sub_handles = set()  # type: set
+        """Python :class:`set` of invalid queries, for caching purposes."""
+        self._name = self._handle.get_name_string()  # type: str
+        """The name of an object.
 
-        self._name = self._handle.get_name_string()
-        self._type = self._handle.get_type_string()
-        self._fullname = self._name + "(%s)" % self._type
-        self._path = self._name if path is None else path
+        :meta public:
+        """
+        self._type = self._handle.get_type_string()  # type: str
+        """The type of an object as a string.
+
+        :meta public:
+        """
+        self._fullname = self._name + "(%s)" % self._type  # type: str
+        """The name of an object with its type appended in parentheses."""
+        self._path = self._name if path is None else path  # type: str
+        """The path to this handle, or its name if this is the root handle.
+
+        :meta public:
+        """
         self._log = SimLog("cocotb.%s" % self._name)
+        """The logging object."""
         self._log.debug("Created")
-        self._def_name = self._handle.get_definition_name()
-        self._def_file = self._handle.get_definition_file()
+        self._def_name = self._handle.get_definition_name()  # type: str
+        """The name of a GPI object's definition.
+
+        :meta public:
+        """
+        self._def_file = self._handle.get_definition_file()  # type: str
+        """The file that sources the object's definition.
+
+        :meta public:
+        """
 
     def get_definition_name(self):
         return self._def_name
@@ -96,7 +114,7 @@ class SimHandleBase:
         return hash(self._handle)
 
     def __len__(self):
-        """Returns the 'length' of the underlying object.
+        """Return the "length" (the number of elements) of the underlying object.
 
         For vectors this is the number of bits.
         """
@@ -158,9 +176,10 @@ class RegionObject(SimHandleBase):
 
     Region objects don't have values, they are effectively scopes or namespaces.
     """
+
     def __init__(self, handle, path):
         SimHandleBase.__init__(self, handle, path)
-        self._discovered = False
+        self._discovered = False  # True if this object has already been discovered
 
     def __iter__(self):
         """Iterate over all known objects in this layer of hierarchy."""
@@ -181,8 +200,8 @@ class RegionObject(SimHandleBase):
                 yield handle
 
     def _discover_all(self):
-        """When iterating or performing tab completion, we run through ahead of
-        time and discover all possible children, populating the ``_sub_handles``
+        """When iterating or performing IPython tab completion, we run through ahead of
+        time and discover all possible children, populating the :any:`_sub_handles`
         mapping. Hierarchy can't change after elaboration so we only have to
         do this once.
         """
@@ -207,12 +226,12 @@ class RegionObject(SimHandleBase):
 
         self._discovered = True
 
-    def _child_path(self, name):
-        """Returns a string of the path of the child :any:`SimHandle` for a given *name*."""
+    def _child_path(self, name) -> str:
+        """Return a string of the path of the child :any:`SimHandle` for a given *name*."""
         return self._path + "." + name
 
     def _sub_handle_key(self, name):
-        """Translates the handle name to a key to use in ``_sub_handles`` dictionary."""
+        """Translate the handle name to a key to use in :any:`_sub_handles` dictionary."""
         return name.split(".")[-1]
 
     def __dir__(self):
@@ -245,7 +264,6 @@ class HierarchyObject(RegionObject):
         self._sub_handles[name] = sub_handle
         return sub_handle
 
-
     def __setattr__(self, name, value):
         """Provide transparent access to signals via the hierarchy.
 
@@ -272,9 +290,11 @@ class HierarchyObject(RegionObject):
         raise AttributeError("%s contains no object named %s" % (self._name, name))
 
     def __getattr__(self, name):
-        """Query the simulator for a object with the specified name
+        """Query the simulator for an object with the specified name
         and cache the result to build a tree of objects.
         """
+        if name.startswith("_"):
+            return SimHandleBase.__getattr__(self, name)
 
         handle = self.__get_sub_handle_by_name(name)
         if handle is not None:
@@ -285,10 +305,14 @@ class HierarchyObject(RegionObject):
 
         raise AttributeError("%s contains no object named %s" % (self._name, name))
 
-    def _id(self, name, extended=True):
-        """Query the simulator for a object with the specified name,
-        including extended identifiers,
+    def _id(self, name, extended: bool = True):
+        """Query the simulator for an object with the specified *name*,
         and cache the result to build a tree of objects.
+
+        If *extended* is ``True``, run the query only for VHDL extended identifiers.
+        For Verilog, only ``extended=False`` is supported.
+
+        :meta public:
         """
         if extended:
             name = "\\"+name+"\\"
@@ -304,7 +328,7 @@ class HierarchyArrayObject(RegionObject):
     """Hierarchy Arrays are containers of Hierarchy Objects."""
 
     def _sub_handle_key(self, name):
-        """Translates the handle name to a key to use in ``_sub_handles`` dictionary."""
+        """Translate the handle name to a key to use in :any:`_sub_handles` dictionary."""
         # This is slightly hacky, but we need to extract the index from the name
         #
         # FLI and VHPI(IUS):  _name(X) where X is the index
@@ -323,7 +347,7 @@ class HierarchyArrayObject(RegionObject):
             raise ValueError("Unable to match an index pattern: {}".format(name))
 
     def __len__(self):
-        """Returns the 'length' of the generate block."""
+        """Return the "length" of the generate block."""
         if self._len is None:
             if not self._discovered:
                 self._discover_all()
@@ -344,7 +368,7 @@ class HierarchyArrayObject(RegionObject):
         return self._sub_handles[index]
 
     def _child_path(self, name):
-        """Returns a string of the path of the child :any:`SimHandle` for a given name."""
+        """Return a string of the path of the child :any:`SimHandle` for a given name."""
         index = self._sub_handle_key(name)
         return self._path + "[" + str(index) + "]"
 
@@ -357,6 +381,7 @@ class _AssignmentResult:
     An object that exists solely to provide an error message if the caller
     is not aware of cocotb's meaning of ``<=``.
     """
+
     def __init__(self, signal, value):
         self._signal = signal
         self._value = value
@@ -390,13 +415,11 @@ class NonHierarchyObject(SimHandleBase):
 
     @value.setter
     def value(self, value):
-        def _call_on_readwrite(f, *args):
-            cocotb.scheduler._schedule_write(self, f, *args)
-        self._set_value(value, _call_on_readwrite)
+        self._set_value(value, cocotb.scheduler._schedule_write)
 
     def setimmediatevalue(self, value):
         """ Assign a value to this simulation object immediately. """
-        def _call_now(f, *args):
+        def _call_now(handle, f, *args):
             f(*args)
         self._set_value(value, _call_now)
 
@@ -406,7 +429,7 @@ class NonHierarchyObject(SimHandleBase):
         This is used to implement both the setter for :attr:`value`, and the
         :meth:`setimmediatevalue` method.
 
-        ``call_sim(f, *args)`` should be used to schedule simulator writes,
+        ``call_sim(handle, f, *args)`` should be used to schedule simulator writes,
         rather than performing them directly as ``f(*args)``.
         """
         raise TypeError("Not permissible to set values on object %s of type %s" % (self._name, type(self)))
@@ -447,6 +470,7 @@ class ConstantObject(NonHierarchyObject):
     The value is cached in the class since it is fixed at elaboration
     time and won't change within a simulation.
     """
+
     def __init__(self, handle, path, handle_type):
         """
         Args:
@@ -483,7 +507,12 @@ class ConstantObject(NonHierarchyObject):
         return self._value
 
     def __str__(self):
-        return str(self.value)
+        if isinstance(self.value, bytes):
+            StringObject._emit_str_warning(self)
+            return self.value.decode('ascii')
+        else:
+            ModifiableObject._emit_str_warning(self)
+            return str(self.value)
 
 
 class NonHierarchyIndexableObject(NonHierarchyObject):
@@ -510,6 +539,7 @@ class NonHierarchyIndexableObject(NonHierarchyObject):
         - **Wrong**: ``dut.some_array.value[0] = 1`` (gets value as a list then updates index 0)
         - **Correct**: ``dut.some_array[0].value = 1``
     """
+
     def __init__(self, handle, path):
         NonHierarchyObject.__init__(self, handle, path)
         self._range = self._handle.get_range()
@@ -589,35 +619,47 @@ class NonConstantObject(NonHierarchyIndexableObject):
         """An iterator for gathering all loads on a signal."""
         return self._handle.iterate(simulator.LOADS)
 
+
 class _SetAction:
     """Base class representing the type of action used while write-accessing a handle."""
     pass
 
+
 class _SetValueAction(_SetAction):
     __slots__ = ("value",)
     """Base class representing the type of action used while write-accessing a handle with a value."""
+
     def __init__(self, value):
         self.value = value
 
+
 class Deposit(_SetValueAction):
     """Action used for placing a value into a given handle."""
+
     def _as_gpi_args_for(self, hdl):
         return self.value, 0  # GPI_DEPOSIT
 
+
 class Force(_SetValueAction):
     """Action used to force a handle to a given value until a release is applied."""
+
     def _as_gpi_args_for(self, hdl):
         return self.value, 1  # GPI_FORCE
 
+
 class Freeze(_SetAction):
     """Action used to make a handle keep its current value until a release is used."""
+
     def _as_gpi_args_for(self, hdl):
         return hdl.value, 1  # GPI_FORCE
 
+
 class Release(_SetAction):
     """Action used to stop the effects of a previously applied force/freeze action."""
+
     def _as_gpi_args_for(self, hdl):
         return 0, 2  # GPI_RELEASE
+
 
 class ModifiableObject(NonConstantObject):
     """Base class for simulator objects whose values can be modified."""
@@ -642,7 +684,7 @@ class ModifiableObject(NonConstantObject):
         value, set_action = self._check_for_set_action(value)
 
         if isinstance(value, int) and value < 0x7fffffff and len(self) <= 32:
-            call_sim(self._handle.set_signal_val_long, set_action, value)
+            call_sim(self, self._handle.set_signal_val_long, set_action, value)
             return
         if isinstance(value, ctypes.Structure):
             value = BinaryValue(value=cocotb.utils.pack(value), n_bits=len(self))
@@ -666,7 +708,7 @@ class ModifiableObject(NonConstantObject):
                 "Unsupported type for value assignment: {} ({!r})"
                 .format(type(value), value))
 
-        call_sim(self._handle.set_signal_val_binstr, set_action, value.binstr)
+        call_sim(self, self._handle.set_signal_val_binstr, set_action, value.binstr)
 
     def _check_for_set_action(self, value):
         if not isinstance(value, _SetAction):
@@ -682,7 +724,15 @@ class ModifiableObject(NonConstantObject):
     def __int__(self):
         return int(self.value)
 
+    def _emit_str_warning(self):
+        warnings.warn(
+            "`str({t})` is deprecated, and in future will return `{t}._path`. "
+            "To get a string representation of the value, use `str({t}.value)`."
+            .format(t=type(self).__qualname__),
+            FutureWarning, stacklevel=3)
+
     def __str__(self):
+        self._emit_str_warning()
         return str(self.value)
 
 
@@ -711,7 +761,7 @@ class RealObject(ModifiableObject):
                 "Unsupported type for real value assignment: {} ({!r})"
                 .format(type(value), value))
 
-        call_sim(self._handle.set_signal_val_real, set_action, value)
+        call_sim(self, self._handle.set_signal_val_real, set_action, value)
 
     @ModifiableObject.value.getter
     def value(self) -> float:
@@ -746,7 +796,7 @@ class EnumObject(ModifiableObject):
                 "Unsupported type for enum value assignment: {} ({!r})"
                 .format(type(value), value))
 
-        call_sim(self._handle.set_signal_val_long, set_action, value)
+        call_sim(self, self._handle.set_signal_val_long, set_action, value)
 
     @ModifiableObject.value.getter
     def value(self) -> int:
@@ -778,7 +828,7 @@ class IntegerObject(ModifiableObject):
                 "Unsupported type for integer value assignment: {} ({!r})"
                 .format(type(value), value))
 
-        call_sim(self._handle.set_signal_val_long, set_action, value)
+        call_sim(self, self._handle.set_signal_val_long, set_action, value)
 
     @ModifiableObject.value.getter
     def value(self) -> int:
@@ -821,13 +871,26 @@ class StringObject(ModifiableObject):
                 "Unsupported type for string value assignment: {} ({!r})"
                 .format(type(value), value))
 
-        call_sim(self._handle.set_signal_val_str, set_action, value)
+        call_sim(self, self._handle.set_signal_val_str, set_action, value)
 
     @ModifiableObject.value.getter
     def value(self) -> bytes:
         return self._handle.get_signal_val_str()
 
+    def _emit_str_warning(self):
+        warnings.warn(
+            "`str({t})` is deprecated, and in future will return `{t}._path`. "
+            "To access the `bytes` value of this handle, use `{t}.value`."
+            .format(t=type(self).__qualname__),
+            FutureWarning, stacklevel=3)
+
+    def __str__(self):
+        self._emit_str_warning()
+        return self.value.decode('ascii')
+
+
 _handle2obj = {}
+
 
 def SimHandle(handle, path=None):
     """Factory function to create the correct type of `SimHandle` object.

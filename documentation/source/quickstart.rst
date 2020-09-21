@@ -1,132 +1,32 @@
+.. _quickstart:
+
 ****************
 Quickstart Guide
 ****************
-
-Installing cocotb
-=================
-
-Installation of Pre-requisites
-------------------------------
-
-Cocotb has the following requirements:
-
-* Python 3.5+
-* Python-dev packages
-* GCC 4.8.1+ or Clang 3.3+ and associated development packages
-* GNU Make
-* A Verilog or VHDL simulator, depending on your RTL source code
-
-.. versionchanged:: 1.4 Dropped Python 2 support
-
-.. note:: In order to use a 32-bit simulator you need to use a 32-bit version of Python.
-
-Installation with conda (all OS)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-`Conda <https://conda.io/>`_ is an open-source package and environment management system that runs on Windows, macOS and Linux.
-
-Download and install `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`_ from https://conda.io/ for your OS and architecture.
-
-You will also need to install a compiler (GCC or Clang) and GNU Make.
-
-On Windows you can easily do this with conda:
-
-.. code-block:: bash
-
-    conda install -c msys2 m2-base m2-make m2w64-toolchain libpython
-
-Native Installation for Debian/Ubuntu-based Systems
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: bash
-
-    sudo apt-get install make gcc g++ python3 python3-dev python3-pip
-    sudo apt-get install swig  # optional, needed for one of the examples
-
-Native Installation for Red Hat-based Systems
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: bash
-
-    sudo yum install make gcc gcc-c++ libstdc++-devel python3 python3-devel python3-pip
-    sudo yum install swig  # optional, needed for one of the examples
-
-Installation for macOS
-^^^^^^^^^^^^^^^^^^^^^^
-
-You need a few packages installed to get cocotb running on macOS.
-Installing a package manager really helps things out here.
-
-`Brew <https://brew.sh/>`_ seems to be the most popular, so we'll assume you have that installed.
-
-.. code-block:: bash
-
-    brew install python icarus-verilog gtkwave
-
-.. seealso::
-
-   For more installation options (also for 32-bit) please see `our Wiki <https://github.com/cocotb/cocotb/wiki/Tier-2-Setup-Instructions>`_.
-
-
-Simulator Installation
-^^^^^^^^^^^^^^^^^^^^^^
-
-For detailed instructions and the list of supported simulators see :ref:`simulator-support`.
-
-.. note::
-
-    Ensure that path to the simulator executable is appended to the ``PATH`` environment variable.
-
-
-.. _installation_via_pip::
-
-Cocotb Installation via PIP
----------------------------
-
-.. versionadded:: 1.2
-
-Cocotb can be installed by running
-
-.. code-block:: bash
-
-    pip install cocotb
-
-.. seealso::
-
-    For user-local installation, follow the `pip User Guide <https://pip.pypa.io/en/stable/user_guide/#user-installs/>`_.
-
-To install the development version of cocotb:
-
-.. code-block:: bash
-
-    pip install https://github.com/cocotb/cocotb/archive/master.zip
-
-.. warning::
-
-    ``pip`` may belong to a different python installation to what you expect.
-    Use ``pip -V`` to check.
-    If this shows Python 2.7, use ``pip3`` or ``python3 -m pip`` in place of ``pip`` in the commands below.
-
-.. note::
-
-    After installation, you should be able to execute ``cocotb-config``.
-    If it is not found, you need to append its location to the ``PATH`` environment variable.
-    This may happen when you use the ``--user`` option to ``pip``, in which case the location is documented :ref:`here <python:inst-alt-install-user>`.
 
 
 Running your first Example
 ==========================
 
-Assuming you have installed the prerequisites as above,
-the following lines are all you need to run a first simulation with cocotb:
+Make sure you have the :ref:`prerequisites<install-prerequisites>`
+(Python with development packages, a C++11 compiler with development packages, GNU Make,
+a :ref:`supported simulator<simulator-support>`) and cocotb itself (``pip install cocotb``) available.
+
+Download and extract the cocotb source files according to the *release version* you are using from
+https://github.com/cocotb/cocotb/releases - you can check your cocotb version with ``cocotb-config --version``.
+
+The sources for cocotb's *development version* are available from
+https://github.com/cocotb/cocotb/archive/master.zip
+
+The following lines are all you need to run a first simulation with cocotb:
 
 .. code-block:: bash
 
-    git clone https://github.com/cocotb/cocotb
-    cd cocotb/examples/endian_swapper/tests
+    cd cocotb/examples/simple_dff
     make
 
-Selecting a different simulator is as easy as:
+This was running with the default simulator, Icarus Verilog,
+but selecting a different simulator is as easy as:
 
 .. code-block:: bash
 
@@ -136,10 +36,10 @@ Selecting a different simulator is as easy as:
 Running the same example as VHDL
 --------------------------------
 
-The ``endian_swapper`` example includes both a VHDL and a Verilog RTL implementation.
-The cocotb testbench can execute against either implementation using VPI for
-Verilog and VHPI/FLI for VHDL.  To run the test suite against the VHDL
-implementation use the following command (a VHPI or FLI capable simulator must
+The ``simple_dff`` example includes both a VHDL and a Verilog :term:`RTL` implementation.
+The cocotb testbench can execute against either implementation using :term:`VPI` for
+Verilog and :term:`VHPI`/:term:`FLI` for VHDL.  To run the test suite against the VHDL
+implementation, use the following command (a :term:`VHPI` or :term:`FLI` capable simulator must
 be used):
 
 .. code-block:: bash
@@ -150,10 +50,10 @@ be used):
 Using cocotb
 ============
 
-A typical cocotb testbench requires no additional HDL code (though nothing prevents you from adding testbench helper code).
-The Design Under Test (DUT) is instantiated as the toplevel in the simulator
+A typical cocotb testbench requires no additional :term:`HDL` code (though nothing prevents you from adding testbench helper code).
+The Design Under Test (:term:`DUT`) is instantiated as the toplevel in the simulator
 without any wrapper code.
-Cocotb drives stimulus onto the inputs to the DUT and monitors the outputs
+Cocotb drives stimulus onto the inputs to the :term:`DUT` and monitors the outputs
 directly from Python.
 
 
@@ -184,7 +84,7 @@ Creating a test
 The test is written in Python. Cocotb wraps your top level with the handle you
 pass it. In this documentation, and most of the examples in the project, that
 handle is ``dut``, but you can pass your own preferred name in instead. The
-handle is used in all Python files referencing your RTL project. Assuming we
+handle is used in all Python files referencing your :term:`RTL` project. Assuming we
 have a toplevel port called ``clk`` we could create a test file containing the
 following:
 
@@ -194,15 +94,15 @@ following:
     from cocotb.triggers import Timer
 
     @cocotb.test()
-    def my_first_test(dut):
+    async def my_first_test(dut):
         """Try accessing the design."""
 
         dut._log.info("Running test!")
         for cycle in range(10):
             dut.clk = 0
-            yield Timer(1, units='ns')
+            await Timer(1, units='ns')
             dut.clk = 1
-            yield Timer(1, units='ns')
+            await Timer(1, units='ns')
         dut._log.info("Running test!")
 
 This will drive a square wave clock onto the ``clk`` port of the toplevel.
@@ -247,10 +147,10 @@ or using direct assignment while traversing the hierarchy.
 
 
 The syntax ``sig <= new_value`` is a short form of ``sig.value = new_value``.
-It not only resembles HDL syntax, but also has the same semantics:
+It not only resembles :term:`HDL` syntax, but also has the same semantics:
 writes are not applied immediately, but delayed until the next write cycle.
 Use ``sig.setimmediatevalue(new_val)`` to set a new value immediately
-(see :meth:`~cocotb.handle.ModifiableObject.setimmediatevalue`).
+(see :meth:`~cocotb.handle.NonHierarchyObject.setimmediatevalue`).
 
 In addition to regular value assignments (deposits), signals can be forced
 to a predetermined value or frozen at their current value. To achieve this,
@@ -314,6 +214,7 @@ The following example shows these in action:
 
 .. code-block:: python3
 
+    # A coroutine
     async def reset_dut(reset_n, duration_ns):
         reset_n <= 0
         await Timer(duration_ns, units='ns')

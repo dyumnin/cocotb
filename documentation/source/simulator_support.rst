@@ -4,13 +4,14 @@
 Simulator Support
 *****************
 
-This page documents specifics, limitations, workarounds etc. in the various simulators.
+This page lists the simulators that cocotb can be used with
+and documents specifics, limitations, workarounds etc.
 
 
 .. _sim-icarus:
 
-Icarus
-======
+Icarus Verilog
+==============
 
 In order to use this simulator, set :make:var:`SIM` to ``icarus``:
 
@@ -23,13 +24,13 @@ In order to use this simulator, set :make:var:`SIM` to ``icarus``:
 Accessing bits in a vector
 --------------------------
 
-Accessing bits of a vector doesn't work:
+Accessing bits of a vector directly was not possible until (including) version 10.3:
 
 .. code-block:: python3
 
     dut.stream_in_data[2] <= 1
 
-See the ``access_single_bit`` test in :file:`examples/functionality/tests/test_discovery.py`.
+See also https://github.com/steveicarus/iverilog/issues/323.
 
 .. _sim-icarus-waveforms:
 
@@ -59,13 +60,12 @@ to the top component as shown in the example below:
     `endif
     endmodule
 
-.. _sim-icarus-time:
+.. _sim-icarus-issues:
 
-Time unit and precision
------------------------
+Issues for this simulator
+-------------------------
 
-Setting the time unit and time precision is not possible from the command-line,
-and therefore the make variables :make:var:`COCOTB_HDL_TIMEUNIT` and :make:var:`COCOTB_HDL_TIMEPRECISION` are ignored.
+* `All issues with label category:simulators:icarus <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Aicarus>`_
 
 
 .. _sim-verilator:
@@ -98,7 +98,7 @@ If your design's clocks vary in precision, the performance of the simulation can
 Coverage
 --------
 
-To enable HDL code coverage, add Verilator's coverage option(s) to the :make:var:`EXTRA_ARGS` make variable, for example:
+To enable :term:`HDL` code coverage, add Verilator's coverage option(s) to the :make:var:`EXTRA_ARGS` make variable, for example:
 
  .. code-block:: make
 
@@ -121,6 +121,14 @@ To get waveforms in VCD format, add Verilator's trace option(s) to the
 To set the same options on the command line, use ``EXTRA_ARGS="--trace --trace-structs" make ...``.
 A VCD file named ``dump.vcd`` will be generated in the current directory.
 
+.. _sim-verilator-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:verilator <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Averilator>`_
+
+
 .. _sim-vcs:
 
 Synopsys VCS
@@ -132,27 +140,46 @@ In order to use this simulator, set :make:var:`SIM` to ``vcs``:
 
     make SIM=vcs
 
-cocotb currently only supports VPI for Synopsys VCS, not VHPI.
+cocotb currently only supports :term:`VPI` for Synopsys VCS, not :term:`VHPI`.
+
+.. _sim-vcs-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:vcs <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Avcs>`_
 
 
 .. _sim-aldec:
+.. _sim-riviera:
 
 Aldec Riviera-PRO
 =================
 
-In order to use this simulator, set :make:var:`SIM` to ``aldec``:
+In order to use this simulator, set :make:var:`SIM` to ``riviera``:
 
 .. code-block:: bash
 
-    make SIM=aldec
+    make SIM=riviera
 
 .. note::
 
    On Windows, do not install the C++ compiler, i.e. unselect it during the installation process of Riviera-PRO.
    (A workaround is to remove or rename the ``mingw`` directory located in the Riviera-PRO installation directory.)
 
+.. deprecated:: 1.4
+
+   Support for Riviera-PRO was previously available with ``SIM=aldec``.
+
 The :envvar:`LICENSE_QUEUE` environment variable can be used for this simulator –
 this setting will be mirrored in the TCL ``license_queue`` variable to control runtime license checkouts.
+
+.. _sim-aldec-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:riviera <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Ariviera>`_
 
 
 .. _sim-activehdl:
@@ -165,6 +192,22 @@ In order to use this simulator, set :make:var:`SIM` to ``activehdl``:
 .. code-block:: bash
 
     make SIM=activehdl
+
+.. warning::
+
+    cocotb does not work with some versions of Active-HDL (see :issue:`1494`).
+
+    Known affected versions:
+
+    - Aldec Active-HDL 10.4a
+    - Aldec Active-HDL 10.5a
+
+.. _sim-activehdl-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:activehdl <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Aactivehdl>`_
 
 
 .. _sim-questa:
@@ -180,6 +223,13 @@ In order to use this simulator, set :make:var:`SIM` to ``questa``:
 
 For more information, see :ref:`sim-modelsim`.
 
+.. _sim-questa-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:questa <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Aquesta>`_
+
 
 .. _sim-modelsim:
 
@@ -194,17 +244,27 @@ In order to use this simulator, set :make:var:`SIM` to ``modelsim``:
 
 .. note::
 
-   In order to use FLI (for VHDL), a ``vdbg`` executable from the simulator installation directory needs to be available on the ``PATH`` during cocotb installation.
+   In order to use :term:`FLI` (for VHDL), a ``vdbg`` executable from the simulator installation directory needs to be available on the ``PATH`` during cocotb installation.
    This is needed to access the proprietary ``mti.h`` header file.
 
-Any ModelSim PE or ModelSim PE derivatives (like the ModelSim Microsemi, Intel, Lattice Editions) do not support the VHDL FLI feature.
-If you try to use them with FLI, you will see a ``vsim-FLI-3155`` error:
+Any ModelSim PE or ModelSim PE derivatives (like the ModelSim Microsemi, Intel, Lattice Editions) do not support the VHDL :term:`FLI` feature.
+If you try to use them with :term:`FLI`, you will see a ``vsim-FLI-3155`` error:
 
 .. code-block:: bash
 
     ** Error (suppressible): (vsim-FLI-3155) The FLI is not enabled in this version of ModelSim.
 
-ModelSim DE and SE (and Questa, of course) support the FLI.
+ModelSim DE and SE (and Questa, of course) support the :term:`FLI`.
+
+In order to start ModelSim or Questa with the graphical interface and for the simulator to remain active after the tests have completed, set :make:var:`GUI=1`.
+If you have previously launched a test without this setting, you might have to delete the :make:var:`SIM_BUILD` directory (``sim_build`` by default) to get the correct behavior.
+
+.. _sim-modelsim-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:modelsim <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Amodelsim>`_
 
 
 .. _sim-incisive:
@@ -220,6 +280,13 @@ In order to use this simulator, set :make:var:`SIM` to ``ius``:
 
 For more information, see :ref:`sim-xcelium`.
 
+.. _sim-incisive-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:ius <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Aius>`_
+
 
 .. _sim-xcelium:
 
@@ -232,7 +299,14 @@ In order to use this simulator, set :make:var:`SIM` to ``xcelium``:
 
     make SIM=xcelium
 
-The simulator automatically loads VPI even when only VHPI is requested.
+The simulator automatically loads :term:`VPI` even when only :term:`VHPI` is requested.
+
+.. _sim-xcelium-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:xcelium <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Axcelium>`_
 
 
 .. _sim-ghdl:
@@ -247,21 +321,37 @@ In order to use this simulator, set :make:var:`SIM` to ``ghdl``:
     make SIM=ghdl
 
 Support is preliminary.
-Noteworthy is that despite GHDL being a VHDL simulator, it implements the VPI interface.
+Noteworthy is that despite GHDL being a VHDL simulator, it implements the :term:`VPI` interface.
+
+.. _sim-ghdl-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:ghdl <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Aghdl>`_
 
 
-.. _sim-nvc:
+.. _sim-ghdl-waveforms:
 
-NVC
-===
+Waveforms
+---------
 
-In order to use this simulator, set :make:var:`SIM` to ``nvc``:
+To get waveforms in VCD format, set the :make:var:`SIM_ARGS` option to ``--vcd=anyname.vcd``,
+for example in a Makefile:
+
+.. code-block:: make
+
+    SIM_ARGS+=--vcd=anyname.vcd
+
+The option can be set on the command line, as shown in the following example.
 
 .. code-block:: bash
 
-    make SIM=nvc
+    SIM_ARGS=--vcd=anyname.vhd make SIM=ghdl
 
-To enable display of VHPI traces, use ``SIM_ARGS=--vhpi-trace make ...``.
+A VCD file named ``anyname.vcd`` will be generated in the current directory.
+
+:make:var:`SIM_ARGS` can also be used to pass command line arguments related to :ref:`other waveform formats supported by GHDL <ghdl:export_waves>`.
 
 
 .. _sim-cvc:
@@ -277,3 +367,10 @@ set :make:var:`SIM` to ``cvc``:
     make SIM=cvc
 
 Note that cocotb's makefile is using CVC's interpreted mode.
+
+.. _sim-cvc-issues:
+
+Issues for this simulator
+-------------------------
+
+* `All issues with label category:simulators:cvc <https://github.com/cocotb/cocotb/issues?q=is%3Aissue+-label%3Astatus%3Aduplicate+label%3Acategory%3Asimulators%3Acvc>`_

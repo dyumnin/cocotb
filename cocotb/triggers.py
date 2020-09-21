@@ -27,15 +27,10 @@
 
 """A collections of triggers which a testbench can await."""
 
-import os
 import abc
 from collections.abc import Awaitable
 
-if "COCOTB_SIM" in os.environ:
-    from cocotb import simulator
-else:
-    simulator = None
-
+from cocotb import simulator
 from cocotb.log import SimLog
 from cocotb.utils import (
     get_sim_steps, get_time_from_sim_steps, ParametrizedSingleton,
@@ -58,6 +53,7 @@ def _pointer_str(obj):
 
 class TriggerException(Exception):
     pass
+
 
 class Trigger(Awaitable):
     """Base class to derive from."""
@@ -160,6 +156,7 @@ class GPITrigger(Trigger):
 
 class Timer(GPITrigger):
     """Fires after the specified simulation time period has elapsed."""
+
     def __init__(self, time_ps, units=None):
         """
         Args:
@@ -420,12 +417,61 @@ class Event:
         :meth:`~cocotb.triggers.Event.set` is called again."""
         self.fired = False
 
+    def is_set(self) -> bool:
+        """ Return true if event has been set """
+        return self.fired
+
     def __repr__(self):
         if self.name is None:
             fmt = "<{0} at {2}>"
         else:
             fmt = "<{0} for {1} at {2}>"
         return fmt.format(type(self).__qualname__, self.name, _pointer_str(self))
+
+
+class _InternalEvent(PythonTrigger):
+    """Event used internally for triggers that need cross-coroutine synchronization.
+
+    This Event can only be waited on once, by a single coroutine.
+
+    Provides transparent __repr__ pass-through to the Trigger using this event,
+    providing a better debugging experience.
+    """
+    def __init__(self, parent):
+        PythonTrigger.__init__(self)
+        self.parent = parent
+        self._callback = None
+        self.fired = False
+        self.data = None
+
+    def prime(self, callback):
+        if self._callback is not None:
+            raise RuntimeError("This Trigger may only be awaited once")
+        self._callback = callback
+        Trigger.prime(self, callback)
+        if self.fired:
+            self._callback(self)
+
+    def set(self, data=None):
+        """Wake up coroutine blocked on this event."""
+        self.fired = True
+        self.data = data
+
+        if self._callback is not None:
+            self._callback(self)
+
+    def is_set(self) -> bool:
+        """Return true if event has been set."""
+        return self.fired
+
+    def __await__(self):
+        if self.primed:
+            raise RuntimeError("Only one coroutine may await this Trigger")
+        # hand the trigger back to the scheduler trampoline
+        return (yield self)
+
+    def __repr__(self):
+        return repr(self.parent)
 
 
 class _Lock(PythonTrigger):
@@ -498,7 +544,7 @@ class Lock:
         """Release the lock."""
         if not self.locked:
             raise TriggerException("Attempt to release an unacquired Lock %s" %
-                        (str(self)))
+                                   (str(self)))
 
         self.locked = False
 
@@ -536,6 +582,7 @@ class NullTrigger(Trigger):
 
     Primarily for internal scheduler use.
     """
+
     def __init__(self, name=None, outcome=None):
         super(NullTrigger, self).__init__()
         self._callback = None
@@ -617,7 +664,7 @@ class Join(PythonTrigger, metaclass=_ParameterizedSingletonAndABC):
             super(Join, self).prime(callback)
 
     def __repr__(self):
-        return "{}({!r})".format(type(self).__qualname__, self._coroutine)
+        return "{}({!s})".format(type(self).__qualname__, self._coroutine)
 
 
 class Waitable(Awaitable):
@@ -662,7 +709,12 @@ class _AggregateWaitable(Waitable):
         # no _pointer_str here, since this is not a trigger, so identity
         # doesn't matter.
         return "{}({})".format(
-            type(self).__qualname__, ", ".join(repr(t) for t in self.triggers)
+            type(self).__qualname__,
+            ", ".join(
+                repr(Join(t)) if isinstance(t, cocotb.decorators.RunningTask)
+                else repr(t)
+                for t in self.triggers
+            )
         )
 
 
@@ -689,7 +741,7 @@ class Combine(_AggregateWaitable):
 
     async def _wait(self):
         waiters = []
-        e = Event()
+        e = _InternalEvent(self)
         triggers = list(self.triggers)
 
         # start a parallel task for each trigger
@@ -703,7 +755,7 @@ class Combine(_AggregateWaitable):
             waiters.append(cocotb.fork(_wait_callback(t, on_done)))
 
         # wait for the last waiter to complete
-        await e.wait()
+        await e
         return self
 
 
@@ -732,7 +784,7 @@ class First(_AggregateWaitable):
 
     async def _wait(self):
         waiters = []
-        e = Event()
+        e = _InternalEvent(self)
         triggers = list(self.triggers)
         completed = []
         # start a parallel task for each trigger
@@ -743,7 +795,7 @@ class First(_AggregateWaitable):
             waiters.append(cocotb.fork(_wait_callback(t, on_done)))
 
         # wait for a waiter to complete
-        await e.wait()
+        await e
 
         # kill all the other waiters
         # TODO: Should this kill the coroutines behind any Join triggers?
@@ -762,6 +814,7 @@ class First(_AggregateWaitable):
 
 class ClockCycles(Waitable):
     """Fires after *num_cycles* transitions of *signal* from ``0`` to ``1``."""
+
     def __init__(self, signal, num_cycles, rising=True):
         """
         Args:

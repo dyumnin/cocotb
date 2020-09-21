@@ -9,7 +9,7 @@ the directory :file:`cocotb/examples/` contains some more smaller modules you ma
 Adder
 =====
 
-The directory :file:`cocotb/examples/adder/` contains an ``adder`` RTL in both Verilog and VHDL,
+The directory :file:`cocotb/examples/adder/` contains an ``adder`` :term:`RTL` in both Verilog and VHDL,
 an ``adder_model`` implemented in Python,
 and the cocotb testbench with two defined tests ­ a simple :func:`adder_basic_test` and
 a slightly more advanced :func:`adder_randomised_test`.
@@ -22,7 +22,7 @@ D Flip-Flop
 
 The directory :file:`cocotb/examples/dff/` contains a simple D flip-flop, implemented in both VDHL and Verilog.
 
-The HDL has the data input port ``d``, the clock port ``c``, and the data output ``q`` with an initial state of ``0``.
+The :term:`HDL` has the data input port ``d``, the clock port ``c``, and the data output ``q`` with an initial state of ``0``.
 No reset port exists.
 
 The cocotb testbench checks the initial state first, then applies random data to the data input.
@@ -33,6 +33,47 @@ The :class:`.BitDriver`'s  :meth:`~.BitDriver.start` and  :meth:`~.BitDriver.sto
 to start and stop generation of input data.
 
 A :class:`.TestFactory` is used to generate the random tests.
+
+
+.. _matrix_multiplier:
+
+Matrix Multiplier
+=================
+
+The directory :file:`cocotb/examples/matrix_multiplier`
+contains a module for multiplying two matrices together,
+implemented in both **VHDL** and **SystemVerilog**.
+
+The module takes two matrices ``a_i`` and ``b_i`` as inputs
+and provides the resulting matrix ``c_o`` as an output.
+On each rising clock edge,
+``c_o`` is calculated and output.
+When input ``valid_i`` is high
+and ``c_o`` is calculated,
+``valid_o`` goes high to signal a valid output value.
+
+The testbench defines ``MatrixInMonitor`` and ``MatrixOutMonitor``
+(both sub-classes of :class:`.BusMonitor`)
+and a test case ``test_multiply``.
+
+``MatrixInMonitor`` watches for valid input matrices,
+then does the multiplication in Python
+and stores the result as the expected output matrix.
+
+``MatrixOutMonitor`` watches for valid output matrices
+and compares the result to the expected value.
+
+The testbench makes use of :class:`.TestFactory`
+and random data generators
+to test many sets of matrices,
+and :class:`.Scoreboard` to compare expected and actual results.
+
+The number of data bits for each entry in the matrices,
+as well as the row and column counts for each matrix,
+are configurable in the Makefile.
+
+.. note::
+    The example module uses one-dimensional arrays in the port definition to represent the matrices.
 
 
 Mean
@@ -52,7 +93,7 @@ feed a :class:`.Scoreboard` with the collected transactions on input bus ``i``.
 Mixed Language
 ==============
 
-The directory :file:`cocotb/examples/mixed_language/` contains two toplevel HDL files,
+The directory :file:`cocotb/examples/mixed_language/` contains two toplevel :term:`HDL` files,
 one in VHDL, one in SystemVerilog, that each instantiate the ``endian_swapper`` in
 SystemVerilog and VHDL in parallel and chains them together so that the endianness is swapped twice.
 
@@ -79,43 +120,25 @@ The directory :file:`cocotb/examples/axi_lite_slave/` contains ...
     Write documentation, see :file:`README.md`
 
 
-Sorter
-======
+.. _mixed_signal:
 
-Example testbench for snippet of code from `comp.lang.verilog <https://github.com/chiggs/comp.lang.verilog/blob/master/maja55/testbench.py>`_:
+Mixed-signal (analog/digital)
+=============================
 
-.. code-block:: python3
+This example with two different designs shows
+how cocotb can be used in an analog-mixed signal (AMS) simulation,
+provided your simulator supports this.
+Such an AMS setup involves a digital and an analog simulation kernel,
+and also provides means to transfer data between the digital and the analog domain.
 
-    @cocotb.coroutine
-    def run_test(dut, data_generator=random_data, delay_cycles=2):
-        """Send data through the DUT and check it is sorted output."""
-        cocotb.fork(Clock(dut.clk, 100).start())
+The "-AMS" variants of the common digital HDLs (VHDL-AMS, Verilog-AMS and SystemVerilog-AMS)
+and languages like Spice can be used to express the analog behavior of your circuit.
 
-        # Don't check until valid output
-        expected = [None] * delay_cycles
+Due to limitations of the underlying simulator interfaces (VPI, VHPI, FLI),
+cocotb cannot directly access the analog domain but has to resort to e.g. HDL helper code.
+Thus, unlike the other examples,
+part of this testbench is implemented with cocotb and the helper part with HDL.
 
-        for index, values in enumerate(data_generator(bits=len(dut.in1))):
-            expected.append(sorted(values))
-
-            yield RisingEdge(dut.clk)
-            dut.in1 = values[0]
-            dut.in2 = values[1]
-            dut.in3 = values[2]
-            dut.in4 = values[3]
-            dut.in5 = values[4]
-
-            yield ReadOnly()
-            expect = expected.pop(0)
-
-            if expect is None:
-                continue
-
-            got = [int(dut.out5), int(dut.out4), int(dut.out3),
-                   int(dut.out2), int(dut.out1)]
-
-            if got != expect:
-                dut._log.error('Expected %s' % expect)
-                dut._log.error('Got %s' % got)
-                raise TestFailure("Output didn't match")
-
-        dut._log.info('Sucessfully sent %d cycles of data' % (index + 1))
+.. toctree::
+   rescap
+   regulator

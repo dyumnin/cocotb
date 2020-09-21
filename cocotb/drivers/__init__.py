@@ -30,6 +30,7 @@
 """Set of common driver base classes."""
 
 from collections import deque
+from typing import Iterable, Tuple, Any, Optional, Callable
 
 import cocotb
 from cocotb.decorators import coroutine
@@ -37,6 +38,7 @@ from cocotb.triggers import (Event, RisingEdge, ReadOnly, NextTimeStep,
                              Edge)
 from cocotb.bus import Bus
 from cocotb.log import SimLog
+from cocotb.handle import SimHandleBase
 
 
 class BitDriver:
@@ -44,16 +46,17 @@ class BitDriver:
 
     Useful for exercising ready/valid flags.
     """
+
     def __init__(self, signal, clk, generator=None):
         self._signal = signal
         self._clk = clk
         self._generator = generator
 
-    def start(self, generator=None):
+    def start(self, generator: Iterable[Tuple[int, int]] = None) -> None:
         """Start generating data.
 
         Args:
-            generator (generator, optional): Generator yielding data.
+            generator: Generator yielding data.
                 The generator should yield tuples ``(on, off)``
                 with the number of cycles to be on,
                 followed by the number of cycles to be off.
@@ -69,8 +72,7 @@ class BitDriver:
         """Stop generating data."""
         self._cr.kill()
 
-    @cocotb.coroutine
-    def _cr_twiddler(self, generator=None):
+    async def _cr_twiddler(self, generator=None):
         if generator is None and self._generator is None:
             raise Exception("No generator provided!")
         if generator is not None:
@@ -83,10 +85,10 @@ class BitDriver:
             on, off = next(self._generator)
             self._signal <= 1
             for _ in range(on):
-                yield edge
+                await edge
             self._signal <= 0
             for _ in range(off):
-                yield edge
+                await edge
 
 
 class Driver:
@@ -95,6 +97,7 @@ class Driver:
     The driver is responsible for serializing transactions onto the physical
     pins of the interface.  This may consume simulation time.
     """
+
     def __init__(self):
         """Constructor for a driver instance."""
         self._pending = Event(name="Driver._pending")
@@ -113,17 +116,20 @@ class Driver:
             self._thread.kill()
             self._thread = None
 
-    def append(self, transaction, callback=None, event=None, **kwargs):
+    def append(
+        self, transaction: Any, callback: Callable[[Any], Any] = None,
+        event: Event = None, **kwargs: Any
+    ) -> None:
         """Queue up a transaction to be sent over the bus.
 
         Mechanisms are provided to permit the caller to know when the
         transaction is processed.
 
         Args:
-            transaction (any): The transaction to be sent.
-            callback (callable, optional): Optional function to be called
+            transaction: The transaction to be sent.
+            callback: Optional function to be called
                 when the transaction has been sent.
-            event (optional): :class:`~cocotb.triggers.Event` to be set
+            event: :class:`~cocotb.triggers.Event` to be set
                 when the transaction has been sent.
             **kwargs: Any additional arguments used in child class'
                 :any:`_driver_send` method.
@@ -136,47 +142,49 @@ class Driver:
         self._sendQ = deque()
 
     @coroutine
-    def send(self, transaction, sync=True, **kwargs):
-        """Blocking send call (hence must be "yielded" rather than called).
+    async def send(self, transaction: Any, sync: bool = True, **kwargs: Any) -> None:
+        """Blocking send call (hence must be "awaited" rather than called).
 
         Sends the transaction over the bus.
 
         Args:
-            transaction (any): The transaction to be sent.
-            sync (bool, optional): Synchronize the transfer by waiting for a rising edge.
-            **kwargs (dict): Additional arguments used in child class'
+            transaction: The transaction to be sent.
+            sync: Synchronize the transfer by waiting for a rising edge.
+            **kwargs: Additional arguments used in child class'
                 :any:`_driver_send` method.
         """
-        yield self._send(transaction, None, None, sync=sync, **kwargs)
+        await self._send(transaction, None, None, sync=sync, **kwargs)
 
-    def _driver_send(self, transaction, sync=True, **kwargs):
+    async def _driver_send(self, transaction: Any, sync: bool = True, **kwargs: Any) -> None:
         """Actual implementation of the send.
 
         Sub-classes should override this method to implement the actual
         :meth:`~cocotb.drivers.Driver.send` routine.
 
         Args:
-            transaction (any): The transaction to be sent.
-            sync (bool, optional): Synchronize the transfer by waiting for a rising edge.
+            transaction: The transaction to be sent.
+            sync: Synchronize the transfer by waiting for a rising edge.
             **kwargs: Additional arguments if required for protocol implemented in a sub-class.
         """
         raise NotImplementedError("Sub-classes of Driver should define a "
                                   "_driver_send coroutine")
 
-    @coroutine
-    def _send(self, transaction, callback, event, sync=True, **kwargs):
+    async def _send(
+        self, transaction: Any, callback: Callable[[Any], Any], event: Event,
+        sync: bool = True, **kwargs
+    ) -> None:
         """Send coroutine.
 
         Args:
-            transaction (any): The transaction to be sent.
-            callback (callable, optional): Optional function to be called
+            transaction: The transaction to be sent.
+            callback: Optional function to be called
                 when the transaction has been sent.
-            event (optional): event to be set when the transaction has been sent.
-            sync (bool, optional): Synchronize the transfer by waiting for a rising edge.
+            event: event to be set when the transaction has been sent.
+            sync: Synchronize the transfer by waiting for a rising edge.
             **kwargs: Any additional arguments used in child class'
                 :any:`_driver_send` method.
         """
-        yield self._driver_send(transaction, sync=sync, **kwargs)
+        await self._driver_send(transaction, sync=sync, **kwargs)
 
         # Notify the world that this transaction is complete
         if event:
@@ -184,14 +192,13 @@ class Driver:
         if callback:
             callback(transaction)
 
-    @coroutine
-    def _send_thread(self):
+    async def _send_thread(self):
         while True:
 
             # Sleep until we have something to send
             while not self._sendQ:
                 self._pending.clear()
-                yield self._pending.wait()
+                await self._pending.wait()
 
             synchronised = False
 
@@ -200,7 +207,7 @@ class Driver:
             while self._sendQ:
                 transaction, callback, event, kwargs = self._sendQ.popleft()
                 self.log.debug("Sending queued packet...")
-                yield self._send(transaction, callback, event,
+                await self._send(transaction, callback, event,
                                  sync=not synchronised, **kwargs)
                 synchronised = True
 
@@ -215,19 +222,19 @@ class BusDriver(Driver):
         * an entity
 
     Args:
-        entity (SimHandle): A handle to the simulator entity.
-        name (str or None): Name of this bus. ``None`` for a nameless bus, e.g.
+        entity: A handle to the simulator entity.
+        name: Name of this bus. ``None`` for a nameless bus, e.g.
             bus-signals in an interface or a ``modport``.
             (untested on ``struct``/``record``, but could work here as well).
-        clock (SimHandle): A handle to the clock associated with this bus.
-        **kwargs (dict): Keyword arguments forwarded to :class:`cocotb.Bus`,
+        clock: A handle to the clock associated with this bus.
+        **kwargs: Keyword arguments forwarded to :class:`cocotb.Bus`,
             see docs for that class for more information.
 
     """
 
     _optional_signals = []
 
-    def __init__(self, entity, name, clock, **kwargs):
+    def __init__(self, entity: SimHandleBase, name: Optional[str], clock: SimHandleBase, **kwargs: Any):
         index = kwargs.get("array_idx", None)
 
         self.log = SimLog("cocotb.%s.%s" % (entity._name, name))
@@ -242,45 +249,44 @@ class BusDriver(Driver):
         # Give this instance a unique name
         self.name = name if index is None else "%s_%d" % (name, index)
 
-    @coroutine
-    def _driver_send(self, transaction, sync=True):
+    async def _driver_send(self, transaction, sync: bool = True) -> None:
         """Implementation for BusDriver.
 
         Args:
             transaction: The transaction to send.
-            sync (bool, optional): Synchronize the transfer by waiting for a rising edge.
+            sync: Synchronize the transfer by waiting for a rising edge.
         """
         if sync:
-            yield RisingEdge(self.clock)
+            await RisingEdge(self.clock)
         self.bus <= transaction
 
     @coroutine
-    def _wait_for_signal(self, signal):
+    async def _wait_for_signal(self, signal):
         """This method will return when the specified signal
         has hit logic ``1``. The state will be in the
         :class:`~cocotb.triggers.ReadOnly` phase so sim will need
         to move to :class:`~cocotb.triggers.NextTimeStep` before
         registering more callbacks can occur.
         """
-        yield ReadOnly()
+        await ReadOnly()
         while signal.value.integer != 1:
-            yield RisingEdge(signal)
-            yield ReadOnly()
-        yield NextTimeStep()
+            await RisingEdge(signal)
+            await ReadOnly()
+        await NextTimeStep()
 
     @coroutine
-    def _wait_for_nsignal(self, signal):
+    async def _wait_for_nsignal(self, signal):
         """This method will return when the specified signal
         has hit logic ``0``. The state will be in the
         :class:`~cocotb.triggers.ReadOnly` phase so sim will need
         to move to :class:`~cocotb.triggers.NextTimeStep` before
         registering more callbacks can occur.
         """
-        yield ReadOnly()
+        await ReadOnly()
         while signal.value.integer != 0:
-            yield Edge(signal)
-            yield ReadOnly()
-        yield NextTimeStep()
+            await Edge(signal)
+            await ReadOnly()
+        await NextTimeStep()
 
     def __str__(self):
         """Provide the name of the bus"""
@@ -299,7 +305,10 @@ class ValidatedBusDriver(BusDriver):
             ``(valid, invalid)`` cycles to insert.
     """
 
-    def __init__(self, entity, name, clock, *, valid_generator=None, **kwargs):
+    def __init__(
+        self, entity: SimHandleBase, name: str, clock: SimHandleBase, *,
+        valid_generator: Iterable[Tuple[int, int]] = None, **kwargs: Any
+    ) -> None:
         BusDriver.__init__(self, entity, name, clock, **kwargs)
         self.set_valid_generator(valid_generator=valid_generator)
 
@@ -336,8 +345,8 @@ class ValidatedBusDriver(BusDriver):
         self._next_valids()
 
 
-@cocotb.coroutine
-def polled_socket_attachment(driver, sock):
+@coroutine
+async def polled_socket_attachment(driver, sock):
     """Non-blocking socket attachment that queues any payload received from the
     socket to be queued for sending into the driver.
     """
@@ -346,7 +355,7 @@ def polled_socket_attachment(driver, sock):
     sock.setblocking(False)
     driver.log.info("Listening for data from %s" % repr(sock))
     while True:
-        yield RisingEdge(driver.clock)
+        await RisingEdge(driver.clock)
         try:
             data = sock.recv(4096)
         except socket.error as e:

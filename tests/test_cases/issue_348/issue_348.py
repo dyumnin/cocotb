@@ -1,9 +1,8 @@
 import cocotb
 from cocotb.log import SimLog
-from cocotb.triggers import Timer, Edge, RisingEdge, FallingEdge, Join
+from cocotb.triggers import Timer, Edge, RisingEdge, FallingEdge
 from cocotb.result import TestFailure
 
-import sys
 
 @cocotb.coroutine
 def clock_gen(signal, num):
@@ -12,6 +11,7 @@ def clock_gen(signal, num):
         yield Timer(500)
         signal <= 1
         yield Timer(500)
+
 
 @cocotb.coroutine
 def signal_mon(signal, idx, edge):
@@ -26,9 +26,10 @@ def signal_mon(signal, idx, edge):
 
     return edges
 
+
 class DualMonitor:
     def __init__(self, edge, signal):
-        self.log = SimLog("cocotb.%s.%s" % (edge, signal))
+        self.log = SimLog("cocotb.%s.%s" % (edge, signal._path))
         self.edge_type = edge
         self.monitor_edges = [0, 0]
         self.signal = signal
@@ -54,18 +55,19 @@ class DualMonitor:
                 raise TestFailure("Monitor saw nothing")
 
 
-
 # Cadence simulators: "Unable set up RisingEdge(ModifiableObject(sample_module.clk)) Trigger" with VHDL (see #1076)
 @cocotb.test(expect_error=cocotb.triggers.TriggerException if cocotb.SIM_NAME.startswith(("xmsim", "ncsim")) and cocotb.LANGUAGE in ["vhdl"] else False)
 def issue_348_rising(dut):
     """ Start two monitors on RisingEdge """
     yield DualMonitor(RisingEdge, dut.clk).start()
 
+
 # Cadence simulators: "Unable set up FallingEdge(ModifiableObject(sample_module.clk)) Trigger" with VHDL (see #1076)
 @cocotb.test(expect_error=cocotb.triggers.TriggerException if cocotb.SIM_NAME.startswith(("xmsim", "ncsim")) and cocotb.LANGUAGE in ["vhdl"] else False)
 def issue_348_falling(dut):
     """ Start two monitors on FallingEdge """
     yield DualMonitor(FallingEdge, dut.clk).start()
+
 
 # Cadence simulators: "Unable set up Edge(ModifiableObject(sample_module.clk)) Trigger" with VHDL (see #1076)
 @cocotb.test(expect_error=cocotb.triggers.TriggerException if cocotb.SIM_NAME.startswith(("xmsim", "ncsim")) and cocotb.LANGUAGE in ["vhdl"] else False)

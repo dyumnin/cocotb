@@ -35,10 +35,10 @@ NB Currently we only support a very small subset of functionality.
 import warnings
 
 from cocotb.utils import hexdump
-from cocotb.decorators import coroutine
 from cocotb.monitors import BusMonitor
 from cocotb.triggers import RisingEdge, ReadOnly
 from cocotb.binary import BinaryValue
+
 
 class AvalonProtocolError(Exception):
     pass
@@ -64,8 +64,7 @@ class AvalonST(BusMonitor):
             self.config[configoption] = value
             self.log.debug("Setting config option %s to %s", configoption, str(value))
 
-    @coroutine
-    def _monitor_recv(self):
+    async def _monitor_recv(self):
         """Watch the pins and reconstruct transactions."""
 
         # Avoid spurious object creation by recycling
@@ -77,10 +76,10 @@ class AvalonST(BusMonitor):
                 return self.bus.valid.value and self.bus.ready.value
             return self.bus.valid.value
 
-        # NB could yield on valid here more efficiently?
+        # NB could await on valid here more efficiently?
         while True:
-            yield clkedge
-            yield rdonly
+            await clkedge
+            await rdonly
             if valid():
                 vec = self.bus.data.value
                 vec.big_endian = self.config["firstSymbolInHighOrderBits"]
@@ -146,8 +145,7 @@ class AvalonSTPkts(BusMonitor):
                                      "(2**channel_width)-1=%d, channel_width=%d" %
                                      (self.name, self.config['maxChannel'], maxChannel, len(self.bus.channel)))
 
-    @coroutine
-    def _monitor_recv(self):
+    async def _monitor_recv(self):
         """Watch the pins and reconstruct transactions."""
 
         # Avoid spurious object creation by recycling
@@ -164,8 +162,8 @@ class AvalonSTPkts(BusMonitor):
             return self.bus.valid.value
 
         while True:
-            yield clkedge
-            yield rdonly
+            await clkedge
+            await rdonly
 
             if self.in_reset:
                 continue
@@ -216,7 +214,7 @@ class AvalonSTPkts(BusMonitor):
 
                 if self.bus.endofpacket.value:
                     self.log.info("Received a packet of %d bytes", len(pkt))
-                    self.log.debug(hexdump(str((pkt))))
+                    self.log.debug(hexdump(pkt))
                     self.channel = channel
                     if self.report_channel:
                         self._recv({"data": pkt, "channel": channel})
@@ -233,6 +231,7 @@ class AvalonSTPkts(BusMonitor):
                             raise AvalonProtocolError(
                                 "In-Packet Timeout. Didn't receive any valid data for %d cycles!" %
                                 invalid_cyclecount)
+
 
 class AvalonSTPktsWithChannel(AvalonSTPkts):
     """Packetized AvalonST bus using channel.

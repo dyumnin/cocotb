@@ -35,7 +35,7 @@ import os
 import cocotb
 from cocotb.log import SimLog
 from cocotb.result import ReturnValue
-from cocotb.utils import get_sim_time, lazy_property, remove_traceback_frames
+from cocotb.utils import get_sim_time, lazy_property, remove_traceback_frames, extract_coro_stack
 from cocotb import outcomes
 
 # Sadly the Python standard logging module is very slow so it's better not to
@@ -59,6 +59,7 @@ def public(f):
         all.append(f.__name__)
     return f
 
+
 public(public)  # Emulate decorating ourself
 
 
@@ -69,6 +70,7 @@ class CoroutineComplete(Exception):
     exception that the scheduler catches and the callbacks are attached
     here.
     """
+
     def __init__(self, text=""):
         Exception.__init__(self, text)
 
@@ -85,12 +87,19 @@ class RunningTask:
         triggers to fire.
     """
 
+    _id_count = 0  # used by the scheduler for debug
+
     def __init__(self, inst):
 
         if inspect.iscoroutine(inst):
             self._natively_awaitable = True
         elif inspect.isgenerator(inst):
             self._natively_awaitable = False
+        elif inspect.iscoroutinefunction(inst):
+            raise TypeError(
+                "Coroutine function {} should be called prior to being "
+                "scheduled."
+                .format(inst))
         elif sys.version_info >= (3, 6) and inspect.isasyncgen(inst):
             raise TypeError(
                 "{} is an async generator, not a coroutine. "
@@ -100,11 +109,15 @@ class RunningTask:
             raise TypeError(
                 "%s isn't a valid coroutine! Did you forget to use the yield keyword?" % inst)
         self._coro = inst
-        self.__name__ = inst.__name__
-        self.__qualname__ = inst.__qualname__
         self._started = False
         self._callbacks = []
         self._outcome = None
+        self._trigger = None
+
+        self._task_id = self._id_count
+        RunningTask._id_count += 1
+        self.__name__ = "Task %d" % self._task_id
+        self.__qualname__ = self.__name__
 
     @lazy_property
     def log(self):
@@ -126,7 +139,48 @@ class RunningTask:
         return self
 
     def __str__(self):
-        return str(self.__qualname__)
+        return "<{}>".format(self.__name__)
+
+    def _get_coro_stack(self):
+        """Get the coroutine callstack of this Task."""
+        coro_stack = extract_coro_stack(self._coro)
+
+        # Remove Trigger.__await__() from the stack, as it's not really useful
+        if self._natively_awaitable and len(coro_stack):
+            if coro_stack[-1].name == '__await__':
+                coro_stack.pop()
+
+        return coro_stack
+
+    def __repr__(self):
+        coro_stack = self._get_coro_stack()
+
+        if cocotb.scheduler._current_task is self:
+            fmt = "<{name} running coro={coro}()>"
+        elif self._finished:
+            fmt = "<{name} finished coro={coro}() outcome={outcome}>"
+        elif self._trigger is not None:
+            fmt = "<{name} pending coro={coro}() trigger={trigger}>"
+        elif not self._started:
+            fmt = "<{name} created coro={coro}()>"
+        else:
+            fmt = "<{name} adding coro={coro}()>"
+
+        try:
+            coro_name = coro_stack[-1].name
+        # coro_stack may be empty if:
+        # - exhausted generator
+        # - finished coroutine
+        except IndexError:
+            coro_name = self._coro.__name__
+
+        repr_string = fmt.format(
+            name=self.__name__,
+            coro=coro_name,
+            trigger=self._trigger,
+            outcome=self._outcome
+        )
+        return repr_string
 
     def _advance(self, outcome):
         """Advance to the next yield in this coroutine.
@@ -206,6 +260,7 @@ class RunningCoroutine(RunningTask):
 
     All this class does is provide some extra attributes.
     """
+
     def __init__(self, inst, parent):
         RunningTask.__init__(self, inst)
         self._parent = parent
@@ -234,7 +289,7 @@ class RunningTest(RunningCoroutine):
     def __init__(self, inst, parent):
         self.error_messages = []
         RunningCoroutine.__init__(self, inst, parent)
-        self.log = SimLog("cocotb.test.%s" % self.__qualname__, id(self))
+        self.log = SimLog("cocotb.test.%s" % inst.__qualname__, id(self))
         self.started = False
         self.start_time = 0
         self.start_sim_time = 0
@@ -242,10 +297,14 @@ class RunningTest(RunningCoroutine):
         self.expect_error = parent.expect_error
         self.skip = parent.skip
         self.stage = parent.stage
-        self._id = parent._id
+        self.__name__ = "Test %s" % inst.__name__
+        self.__qualname__ = "Test %s" % inst.__qualname__
 
         # make sure not to create a circular reference here
         self.handler = RunningTest.ErrorLogHandler(self.error_messages.append)
+
+    def __str__(self):
+        return "<{}>".format(self.__name__)
 
     def _advance(self, outcome):
         if not self.started:
@@ -267,7 +326,10 @@ class RunningTest(RunningCoroutine):
         `exc` is the exception that the test should report as its reason for
         aborting.
         """
-        assert self._outcome is None
+        if self._outcome is not None:
+            # imported here to avoid circular imports
+            from cocotb.scheduler import InternalError
+            raise InternalError("Outcome already has a value, but is being set again.")
         outcome = outcomes.Error(exc)
         if _debug:
             self.log.debug("outcome forced to {}".format(outcome))
@@ -323,6 +385,7 @@ class function:
     in other words, to internally block while externally
     appear to yield.
     """
+
     def __init__(self, func):
         self._coro = cocotb.coroutine(func)
 
@@ -338,6 +401,7 @@ class function:
             and standalone functions"""
         return type(self)(self._coro._func.__get__(obj, owner))
 
+
 @public
 class external:
     """Decorator to apply to an external function to enable calling from cocotb.
@@ -347,6 +411,7 @@ class external:
     called.
     Scope for this to be streamlined to a queue in future.
     """
+
     def __init__(self, func):
         self._func = func
         self._log = SimLog("cocotb.external.%s" % self._func.__qualname__, id(self))
@@ -391,6 +456,7 @@ class hook(coroutine, metaclass=_decorator_helper):
 
     All hooks are run at the beginning of a cocotb test suite, prior to any
     test code being run."""
+
     def __init__(self, f):
         super(hook, self).__init__(f)
         self.im_hook = True
@@ -444,7 +510,8 @@ class test(coroutine, metaclass=_decorator_helper):
             .. versionchanged:: 1.3
                 Specific exception types can be expected
         skip (bool, optional):
-            Don't execute this test as part of the regression.
+            Don't execute this test as part of the regression. Test can still be run
+            manually by setting :make:var:`TESTCASE`.
         stage (int, optional)
             Order tests logically into stages, where multiple tests can share a stage.
     """

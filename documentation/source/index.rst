@@ -15,11 +15,11 @@ Welcome to cocotb's documentation!
 What is cocotb?
 ***************
 
-**cocotb** is a *COroutine* based *COsimulation* *TestBench* environment for verifying VHDL and SystemVerilog RTL using `Python <https://www.python.org>`_.
+**cocotb** is a *COroutine* based *COsimulation* *TestBench* environment for verifying VHDL and SystemVerilog :term:`RTL` using `Python <https://www.python.org>`_.
 
 cocotb is completely free, open source (under the `BSD License <https://en.wikipedia.org/wiki/BSD_licenses#3-clause_license_(%22BSD_License_2.0%22,_%22Revised_BSD_License%22,_%22New_BSD_License%22,_or_%22Modified_BSD_License%22)>`_) and hosted on `GitHub <https://github.com/cocotb/cocotb>`_.
 
-cocotb requires a simulator to simulate the HDL design
+cocotb requires a simulator to simulate the :term:`HDL` design
 and has been used with a variety of simulators on Linux, Windows and macOS.
 Please check the :ref:`simulator-support` page for specifics.
 
@@ -56,9 +56,9 @@ All verification is done using Python which has various advantages over using Sy
 How does cocotb work?
 *********************
 
-A typical cocotb testbench requires no additional RTL code.
-The Design Under Test (DUT) is instantiated as the toplevel in the simulator without any wrapper code.
-cocotb drives stimulus onto the inputs to the DUT (or further down the hierarchy) and monitors the outputs directly from Python.
+A typical cocotb testbench requires no additional :term:`RTL` code.
+The Design Under Test (:term:`DUT`) is instantiated as the toplevel in the simulator without any wrapper code.
+cocotb drives stimulus onto the inputs to the :term:`DUT` (or further down the hierarchy) and monitors the outputs directly from Python.
 
 
 .. image:: diagrams/svg/cocotb_overview.svg
@@ -69,8 +69,12 @@ The :keyword:`await` keyword is used to indicate when to pass control of executi
 A test can spawn multiple coroutines, allowing for independent flows of execution.
 
 
-.. todo::
-   - Move "Installation" section to here
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   quickstart
+   install
 
 ..
    Tutorials - lessons that take the reader by the hand through a series of steps to complete a project
@@ -91,7 +95,6 @@ A test can spawn multiple coroutines, allowing for independent flows of executio
    :name: tutorials
    :hidden:
 
-   quickstart
    endian_swapper
    ping_tun_tap
    hal_cosimulation
@@ -120,6 +123,7 @@ A test can spawn multiple coroutines, allowing for independent flows of executio
    coroutines
    triggers
    testbench_tools
+   rotating_logger
 
 .. todo::
    - Add WaveDrom, IPython sections
@@ -143,6 +147,7 @@ A test can spawn multiple coroutines, allowing for independent flows of executio
    :name: key_topics
    :hidden:
 
+   install_devel
    troubleshooting
 
 .. todo::
@@ -174,9 +179,6 @@ A test can spawn multiple coroutines, allowing for independent flows of executio
    simulator_support
    extensions
 
-.. todo::
-   - *Maybe* add a glossary (Coroutine, Driver, Monitor, Scoreboard, HDL, RTL, GPI, V(H)PI, FLI, VIP, UVM, MDV, DUT/DUV)
-
 .. toctree::
    :maxdepth: 1
    :caption: Development & Community
@@ -193,11 +195,12 @@ A test can spawn multiple coroutines, allowing for independent flows of executio
    - In Contributing, add explanation on how to provide a PR, how to test existing PRs, etc.
    - merge `further_resources` into Contributing
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Index
+   :name: index
+   :hidden:
 
-
-#######
-Indices
-#######
-
-* :ref:`Index of Classes, Methods, Variables etc.<genindex>`
-* :ref:`Index of Python Modules <modindex>`
+   Classes, Methods, Variables etc. <genindex>
+   Python Modules <py-modindex>
+   glossary
