@@ -32,8 +32,6 @@ TOPLEVEL_LANG ?= verilog
 
 PWD=$(shell pwd)
 
-export PYTHONPATH := $(PWD)/../cosim:$(PYTHONPATH)
-
 ifeq ($(TOPLEVEL_LANG),verilog)
     VERILOG_SOURCES = $(PWD)/../hdl/endian_swapper.sv
     TOPLEVEL = endian_swapper_sv
@@ -49,31 +47,14 @@ endif
 
 MODULE := test_endian_swapper
 
-ifeq ($(OS),Linux)
-    # TODO: work out how to build the extension module on windows
-    MODULE := $(MODULE),test_endian_swapper_hal
-    CUSTOM_COMPILE_DEPS = hal
-    LD_LIBRARY_PATH := $(PWD)/../cosim:$(LD_LIBRARY_PATH)
-    export LD_LIBRARY_PATH
-endif
-
 include $(shell cocotb-config --makefiles)/Makefile.sim
-
-ifeq ($(OS),Linux)
-.PHONY: hal
-hal:
-	cd ../cosim && make
-
-clean::
-	-cd ../cosim && make clean
-endif
 
 # Stuff below is useful for profiling
 # Need gprof2dot from https://github.com/jrfonseca/gprof2dot
 test_profile.pstat: sim
 
 callgraph.svg: test_profile.pstat
-	gprof2dot.py -f pstats $< | dot -Tsvg -o $@
+	gprof2dot -f pstats $< | dot -Tsvg -o $@
 
 .PHONY: profile
 profile:

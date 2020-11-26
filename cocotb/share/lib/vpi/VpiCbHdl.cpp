@@ -529,11 +529,11 @@ int VpiTimedCbHdl::cleanup_callback()
         /* Issue #188: Work around for modelsim that is harmless to others too,
            we tag the time as delete, let it fire then do not pass up
            */
-        LOG_DEBUG("Not removing PRIMED timer %d\n", vpi_time.low);
+        LOG_DEBUG("Not removing PRIMED timer %d", vpi_time.low);
         m_state = GPI_DELETE;
         return 0;
     case GPI_DELETE:
-        LOG_DEBUG("Removing DELETE timer %d\n", vpi_time.low);
+        LOG_DEBUG("Removing DELETE timer %d", vpi_time.low);
     default:
         break;
     }
@@ -576,7 +576,7 @@ decltype(VpiIterator::iterate_over) VpiIterator::iterate_over = []{
         vpiRealNet,
         vpiStructVar,
         vpiStructNet,
-        //vpiVariables          // Aldec SEGV on plain Verilog
+        vpiVariables,
         vpiNamedEvent,
         vpiNamedEventArray,
         vpiParameter,
@@ -822,7 +822,7 @@ GpiIterator::Status VpiIterator::next_handle(std::string &name, GpiObjHdl **hdl,
     /* Simulators vary here. Some will allow the name to be accessed
        across boundary. We can simply return this up and allow
        the object to be created. Others do not. In this case
-       we see if the object is in out type range and if not
+       we see if the object is in our type range and if not
        return the raw_hdl up */
 
     const char *c_name = vpi_get_str(vpiName, obj);

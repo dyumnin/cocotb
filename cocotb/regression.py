@@ -48,10 +48,7 @@ from cocotb.handle import SimHandle
 
 from cocotb import simulator
 
-if "COCOTB_PDB_ON_EXCEPTION" in os.environ:
-    _pdb_on_exception = True
-else:
-    _pdb_on_exception = False
+_pdb_on_exception = "COCOTB_PDB_ON_EXCEPTION" in os.environ
 
 # Optional support for coverage collection of testbench files
 coverage = None
@@ -87,7 +84,10 @@ class RegressionManager:
             hooks (Iterable[Hook]): hooks to tun
         """
         self._dut = dut
+        self._test = None
         self._test_task = None
+        self._test_start_time = None
+        self._test_start_sim_time = None
         self._cov = None
         self.log = _logger
         self.start_time = time.time()
@@ -305,12 +305,11 @@ class RegressionManager:
         self.execute()
 
     def _init_test(self, test: Test) -> Optional[RunningTask]:
-        """
-        Initializes a test.
+        """Initialize a test.
 
-        Records outcome if the initialization fails.
-        Records skip if the test is skipped.
-        Saves the initialized test if it successfully initializes.
+        Record outcome if the initialization fails.
+        Record skip if the test is skipped.
+        Save the initialized test if it successfully initializes.
         """
 
         if test.skip:
@@ -324,7 +323,7 @@ class RegressionManager:
                 hilight_end,
                 test.__qualname__))
             self._record_result(test, None, 0, 0)
-            return
+            return None
 
         test_init_outcome = cocotb.outcomes.capture(test, self._dut)
 
@@ -332,7 +331,7 @@ class RegressionManager:
             self.log.error("Failed to initialize test %s" % test.__qualname__,
                            exc_info=test_init_outcome.error)
             self._record_result(test, test_init_outcome, 0, 0)
-            return
+            return None
 
         test = test_init_outcome.get()
         return test
@@ -450,7 +449,7 @@ class RegressionManager:
                 return self.tear_down()
 
             self._test_task = self._init_test(self._test)
-            if self._test_task:
+            if self._test_task is not None:
                 return self._start_test()
 
     def _start_test(self) -> None:
@@ -628,31 +627,42 @@ class TestFactory:
     This Factory allows us to generate sets of tests based on the different
     permutations of the possible arguments to the test function.
 
-    For example if we have a module that takes backpressure and idles and
-    have some packet generation routines ``gen_a`` and ``gen_b``:
+    For example, if we have a module that takes backpressure, has two configurable
+    features where enabling ``feature_b`` requires ``feature_a`` to be active, and
+    need to test against data generation routines ``gen_a`` and ``gen_b``:
 
     >>> tf = TestFactory(test_function=run_test)
     >>> tf.add_option(name='data_in', optionlist=[gen_a, gen_b])
     >>> tf.add_option('backpressure', [None, random_backpressure])
-    >>> tf.add_option('idles', [None, random_idles])
+    >>> tf.add_option(('feature_a', 'feature_b'), [(False, False), (True, False), (True, True)])
     >>> tf.generate_tests()
 
     We would get the following tests:
 
-        * ``gen_a`` with no backpressure and no idles
-        * ``gen_a`` with no backpressure and ``random_idles``
-        * ``gen_a`` with ``random_backpressure`` and no idles
-        * ``gen_a`` with ``random_backpressure`` and ``random_idles``
-        * ``gen_b`` with no backpressure and no idles
-        * ``gen_b`` with no backpressure and ``random_idles``
-        * ``gen_b`` with ``random_backpressure`` and no idles
-        * ``gen_b`` with ``random_backpressure`` and ``random_idles``
+        * ``gen_a`` with no backpressure and both features disabled
+        * ``gen_a`` with no backpressure and only ``feature_a`` enabled
+        * ``gen_a`` with no backpressure and both features enabled
+        * ``gen_a`` with ``random_backpressure`` and both features disabled
+        * ``gen_a`` with ``random_backpressure`` and only ``feature_a`` enabled
+        * ``gen_a`` with ``random_backpressure`` and both features enabled
+        * ``gen_b`` with no backpressure and both features disabled
+        * ``gen_b`` with no backpressure and only ``feature_a`` enabled
+        * ``gen_b`` with no backpressure and both features enabled
+        * ``gen_b`` with ``random_backpressure`` and both features disabled
+        * ``gen_b`` with ``random_backpressure`` and only ``feature_a`` enabled
+        * ``gen_b`` with ``random_backpressure`` and both features enabled
 
     The tests are appended to the calling module for auto-discovery.
 
     Tests are simply named ``test_function_N``. The docstring for the test (hence
     the test description) includes the name and description of each generator.
+
+    .. versionchanged:: 1.5
+        Groups of options are now supported
     """
+
+    # Prevent warnings from collection of TestFactories by unit testing frameworks.
+    __test__ = False
 
     def __init__(self, test_function, *args, **kwargs):
         if sys.version_info > (3, 6) and inspect.isasyncgenfunction(test_function):
@@ -673,11 +683,22 @@ class TestFactory:
         """Add a named option to the test.
 
         Args:
-            name (str): Name of the option. Passed to test as a keyword
-                argument.
+            name (str or iterable of str): An option name, or an iterable of
+                several option names.  Passed to test as keyword arguments.
 
             optionlist (list): A list of possible options for this test knob.
+                If N names were specified, this must be a list of N-tuples or
+                lists, where each element specifies a value for its respective
+                option.
+
+        .. versionchanged:: 1.5
+            Groups of options are now supported
         """
+        if not isinstance(name, str):
+            name = tuple(name)
+            for opt in optionlist:
+                if len(name) != len(opt):
+                    raise ValueError("Mismatch between number of options and number of option values in group")
         self.kwargs[name] = optionlist
 
     def generate_tests(self, prefix="", postfix=""):
@@ -712,7 +733,18 @@ class TestFactory:
             name = "%s%s%s_%03d" % (prefix, self.name, postfix, index + 1)
             doc = "Automatically generated test\n\n"
 
+            # preprocess testoptions to split tuples
+            testoptions_split = {}
             for optname, optvalue in testoptions.items():
+                if isinstance(optname, str):
+                    testoptions_split[optname] = optvalue
+                else:
+                    # previously checked in add_option; ensure nothing has changed
+                    assert len(optname) == len(optvalue)
+                    for n, v in zip(optname, optvalue):
+                        testoptions_split[n] = v
+
+            for optname, optvalue in testoptions_split.items():
                 if callable(optvalue):
                     if not optvalue.__doc__:
                         desc = "No docstring supplied"
@@ -727,7 +759,7 @@ class TestFactory:
                            (name, mod.__name__))
             kwargs = {}
             kwargs.update(self.kwargs_constant)
-            kwargs.update(testoptions)
+            kwargs.update(testoptions_split)
             if hasattr(mod, name):
                 self.log.error("Overwriting %s in module %s. "
                                "This causes a previously defined testcase "

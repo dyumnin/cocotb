@@ -26,6 +26,7 @@
 ******************************************************************************/
 
 #include "VpiImpl.h"
+#include <cstring>
 #include <cocotb_utils.h>  // COCOTB_UNUSED
 
 extern "C" {
@@ -296,13 +297,52 @@ GpiObjHdl* VpiImpl::native_check_create(void *raw_hdl, GpiObjHdl *parent)
 GpiObjHdl* VpiImpl::native_check_create(std::string &name, GpiObjHdl *parent)
 {
     vpiHandle new_hdl;
+    const vpiHandle parent_hdl = parent->get_handle<vpiHandle>();
     std::string fq_name = parent->get_fullname() + "." + name;
-    std::vector<char> writable(fq_name.begin(), fq_name.end());
-    writable.push_back('\0');
 
-    new_hdl = vpi_handle_by_name(&writable[0], NULL);
+    new_hdl = vpi_handle_by_name(const_cast<char*>(fq_name.c_str()), NULL);
 
-    /* No need to iterate to look for generate loops as the tools will at least find vpiGenScopeArray */
+#ifdef ICARUS
+    /* Icarus does not support vpiGenScopeArray, only vpiGenScope.
+     * If handle is not found by name, look for a generate block with
+     * a matching prefix.
+     *     For Example:
+     *         genvar idx;
+     *         generate
+     *             for (idx = 0; idx < 5; idx = idx + 1) begin
+     *                 ...
+     *             end
+     *         endgenerate
+     *
+     *     genblk1      => vpiGenScopeArray (not found)
+     *     genblk1[0]   => vpiGenScope
+     *     ...
+     *     genblk1[4]   => vpiGenScope
+     *
+     *     genblk1 is not found directly, but if genblk1[n] is found,
+     *     genblk1 must exist, so create the pseudo-region object for it.
+     */
+    if (new_hdl == NULL) {
+        vpiHandle iter = vpi_iterate(vpiInternalScope, parent_hdl);
+        if (iter == NULL) {
+            goto skip_iterate;
+        }
+
+        for (auto rgn = vpi_scan(iter); rgn != NULL; rgn = vpi_scan(iter)) {
+            if (vpi_get(vpiType, rgn) == vpiGenScope) {
+                auto rgn_name = vpi_get_str(vpiName, rgn);
+                /* Check if name is a prefix of rgn_name */
+                if (rgn_name && name.length() > 0 && std::strncmp(name.c_str(), rgn_name, name.length()) == 0) {
+                    new_hdl = parent_hdl;
+                    vpi_free_object(iter);
+                    break;
+                }
+            }
+        }
+    }
+skip_iterate:
+#endif
+
     if (new_hdl == NULL) {
         LOG_DEBUG("Unable to query vpi_get_handle_by_name %s", fq_name.c_str());
         return NULL;
@@ -319,7 +359,7 @@ GpiObjHdl* VpiImpl::native_check_create(std::string &name, GpiObjHdl *parent)
     if (vpi_get(vpiType, new_hdl) == vpiGenScopeArray) {
         vpi_free_object(new_hdl);
 
-        new_hdl = parent->get_handle<vpiHandle>();
+        new_hdl = parent_hdl;
     }
 
 
@@ -362,9 +402,9 @@ GpiObjHdl* VpiImpl::native_check_create(int32_t index, GpiObjHdl *parent)
          *       wire [7:0] sig_t4 [0:1][0:2];
          *
          *    Assume vpi_hdl is for "sig_t4":
-         *       vpi_handl_by_index(vpi_hdl, 0);   // Returns a handle to sig_t4[0] for IUS, but NULL on Questa
+         *       vpi_handle_by_index(vpi_hdl, 0);   // Returns a handle to sig_t4[0] for IUS, but NULL on Questa
          *
-         *    Questa only works when both indicies are provided, i.e. will need a pseudo-handle to behave like the first index.
+         *    Questa only works when both indices are provided, i.e. will need a pseudo-handle to behave like the first index.
          */
         if (new_hdl == NULL) {
             int left       = parent->get_range_left();
@@ -393,7 +433,7 @@ GpiObjHdl* VpiImpl::native_check_create(int32_t index, GpiObjHdl *parent)
 
             std::string act_hdl_name = vpi_get_str(vpiName, p_hdl);
 
-            /* Removing the act_hdl_name from the parent->get_name() will leave the psuedo-indices */
+            /* Removing the act_hdl_name from the parent->get_name() will leave the pseudo-indices */
             if (act_hdl_name.length() < parent->get_name().length()) {
                 std::string idx_str = parent->get_name().substr(act_hdl_name.length());
 
@@ -641,108 +681,9 @@ static void register_final_callback()
     sim_finish_cb->arm_callback();
 }
 
-// Called at compile time to validate the arguments to the system functions
-// we redefine (info, warning, error, fatal).
-//
-// Expect either no arguments or a single string
-static int system_function_compiletf(char *userdata)
-{
-    COCOTB_UNUSED(userdata);
-    vpiHandle systf_handle, arg_iterator, arg_handle;
-    int tfarg_type;
-
-    systf_handle = vpi_handle(vpiSysTfCall, NULL);
-    arg_iterator = vpi_iterate(vpiArgument, systf_handle);
-
-    if (arg_iterator == NULL)
-        return 0;
-
-    arg_handle = vpi_scan(arg_iterator);
-    tfarg_type = vpi_get(vpiType, arg_handle);
-
-    // FIXME: HACK for some reason Icarus returns a vpiRealVal type for strings?
-    if (vpiStringVal != tfarg_type && vpiRealVal != tfarg_type) {
-        vpi_printf("ERROR: $[info|warning|error|fatal] argument wrong type: %d\n",
-                    tfarg_type);
-        vpi_free_object(arg_iterator);
-        vpi_control(vpiFinish, 1);
-        return -1;
-    }
-    return 0;
-}
-
-static int systf_info_level           = GPIInfo;
-static int systf_warning_level        = GPIWarning;
-static int systf_error_level          = GPIError;
-static int systf_fatal_level          = GPICritical;
-
-// System function to permit code in the simulator to fail a test
-// TODO: Pass in an error string
-static int system_function_overload(char *userdata)
-{
-    vpiHandle systfref, args_iter, argh;
-    struct t_vpi_value argval;
-    const char *msg = "*** NO MESSAGE PROVIDED ***";
-
-    // Obtain a handle to the argument list
-    systfref = vpi_handle(vpiSysTfCall, NULL);
-    args_iter = vpi_iterate(vpiArgument, systfref);
-
-    // The first argument to fatal is the FinishNum which we discard
-    if (args_iter && *userdata == systf_fatal_level) {
-        vpi_scan(args_iter);
-    }
-
-    if (args_iter) {
-        // Grab the value of the first argument
-        argh = vpi_scan(args_iter);
-        argval.format = vpiStringVal;
-        vpi_get_value(argh, &argval);
-        vpi_free_object(args_iter);
-        msg = argval.value.str;
-    }
-
-    enum gpi_log_levels userdata_as_loglevel = (enum gpi_log_levels)*userdata;
-
-    gpi_log("cocotb.simulator", userdata_as_loglevel, vpi_get_str(vpiFile, systfref), "", (long)vpi_get(vpiLineNo, systfref), "%s", msg );
-
-    // Fail the test for critical errors
-    if (GPICritical == userdata_as_loglevel)
-        gpi_embed_event(SIM_TEST_FAIL, argval.value.str);
-
-    return 0;
-}
-
-static void register_system_functions()
-{
-    s_vpi_systf_data tfData = { vpiSysTask, vpiSysTask, NULL, NULL, NULL, NULL, NULL };
-
-    tfData.sizetf       = NULL;
-    tfData.compiletf    = system_function_compiletf;
-    tfData.calltf       = system_function_overload;
-
-    tfData.user_data    = (char *)&systf_info_level;
-    tfData.tfname       = "$info";
-    vpi_register_systf( &tfData );
-
-    tfData.user_data    = (char *)&systf_warning_level;
-    tfData.tfname       = "$warning";
-    vpi_register_systf( &tfData );
-
-    tfData.user_data    = (char *)&systf_error_level;
-    tfData.tfname       = "$error";
-    vpi_register_systf( &tfData );
-
-    tfData.user_data    = (char *)&systf_fatal_level;
-    tfData.tfname       = "$fatal";
-    vpi_register_systf( &tfData );
-
-}
-
 COCOTBVPI_EXPORT void (*vlog_startup_routines[])() = {
     register_embed,
     gpi_load_extra_libs,
-    register_system_functions,
     register_initial_callback,
     register_final_callback,
     nullptr

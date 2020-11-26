@@ -1,0 +1,1 @@
+:class:`~cocotb.result.TestError` has been deprecated, use :ref:`python:bltin-exceptions`.

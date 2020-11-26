@@ -36,7 +36,6 @@ import cocotb
 from cocotb import simulator
 from cocotb.binary import BinaryValue
 from cocotb.log import SimLog
-from cocotb.result import TestError
 
 # Only issue a warning for each deprecated attribute access
 _deprecation_warned = set()
@@ -96,10 +95,18 @@ class SimHandleBase:
         self._def_name = self._handle.get_definition_name()  # type: str
         """The name of a GPI object's definition.
 
+        This is the value of ``vpiDefName`` for VPI, ``vhpiNameP`` for VHPI,
+        and ``mti_GetPrimaryName`` for FLI.
+        Support for this depends on the specific object type and simulator used.
+
         :meta public:
         """
         self._def_file = self._handle.get_definition_file()  # type: str
-        """The file that sources the object's definition.
+        """The name of the file that sources the object's definition.
+
+        This is the value of ``vpiDefFile`` for VPI, ``vhpiFileNameP`` for VHPI,
+        and ``mti_GetRegionSourceName`` for FLI.
+        Support for this depends on the specific object type and simulator used.
 
         :meta public:
         """
@@ -155,7 +162,8 @@ class SimHandleBase:
     def __setattr__(self, name, value):
         if name in self._compat_mapping:
             if name not in _deprecation_warned:
-                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]))
+                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]),
+                              DeprecationWarning, stacklevel=3)
                 _deprecation_warned.add(name)
             return setattr(self, self._compat_mapping[name], value)
         else:
@@ -164,7 +172,8 @@ class SimHandleBase:
     def __getattr__(self, name):
         if name in self._compat_mapping:
             if name not in _deprecation_warned:
-                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]))
+                warnings.warn("Use of attribute %r is deprecated, use %r instead" % (name, self._compat_mapping[name]),
+                              DeprecationWarning, stacklevel=3)
                 _deprecation_warned.add(name)
             return getattr(self, self._compat_mapping[name])
         else:
@@ -196,7 +205,7 @@ class RegionObject(SimHandleBase):
                     self._log.debug("Yielding index %d from %s (%s)", subindex, name, type(subhdl))
                     yield subhdl
             else:
-                self._log.debug("Yielding %s (%s)", name, handle)
+                self._log.debug("Yielding %s of type %s (%s)", name, type(handle), handle._path)
                 yield handle
 
     def _discover_all(self):
@@ -210,9 +219,10 @@ class RegionObject(SimHandleBase):
         self._log.debug("Discovering all on %s", self._name)
         for thing in self._handle.iterate(simulator.OBJECTS):
             name = thing.get_name_string()
+            path = self._child_path(name)
             try:
-                hdl = SimHandle(thing, self._child_path(name))
-            except TestError as e:
+                hdl = SimHandle(thing, path)
+            except NotImplementedError as e:
                 self._log.debug("%s", e)
                 continue
 
@@ -612,11 +622,19 @@ class NonConstantObject(NonHierarchyIndexableObject):
     # FIXME: what is the difference to ModifiableObject? Explain in docstring.
 
     def drivers(self):
-        """An iterator for gathering all drivers for a signal."""
+        """An iterator for gathering all drivers for a signal.
+
+        This is currently only available for VPI.
+        Also, only a few simulators implement this.
+        """
         return self._handle.iterate(simulator.DRIVERS)
 
     def loads(self):
-        """An iterator for gathering all loads on a signal."""
+        """An iterator for gathering all loads on a signal.
+
+        This is currently only available for VPI.
+        Also, only a few simulators implement this.
+        """
         return self._handle.iterate(simulator.LOADS)
 
 
@@ -903,7 +921,7 @@ def SimHandle(handle, path=None):
         The `SimHandle` object.
 
     Raises:
-        TestError: If no matching object for GPI type could be found.
+        NotImplementedError: If no matching object for GPI type could be found.
     """
     _type2cls = {
         simulator.MODULE:      HierarchyObject,
@@ -940,7 +958,7 @@ def SimHandle(handle, path=None):
         return obj
 
     if t not in _type2cls:
-        raise TestError("Couldn't find a matching object for GPI type %d (path=%s)" % (t, path))
+        raise NotImplementedError("Couldn't find a matching object for GPI type %s(%d) (path=%s)" % (handle.get_type_string(), t, path))
     obj = _type2cls[t](handle, path)
     _handle2obj[handle] = obj
     return obj

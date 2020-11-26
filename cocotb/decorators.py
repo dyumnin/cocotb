@@ -31,6 +31,7 @@ import logging
 import functools
 import inspect
 import os
+import warnings
 
 import cocotb
 from cocotb.log import SimLog
@@ -450,15 +451,27 @@ class _decorator_helper(type):
 
 @public
 class hook(coroutine, metaclass=_decorator_helper):
-    """Decorator to mark a function as a hook for cocotb.
+    r"""
+    Decorator to mark a function as a hook for cocotb.
 
     Used as ``@cocotb.hook()``.
 
     All hooks are run at the beginning of a cocotb test suite, prior to any
-    test code being run."""
+    test code being run.
+
+    .. deprecated:: 1.5
+        Hooks are deprecated.
+        Their functionality can be replaced with module-level Python code,
+        higher-priority tests using the ``stage`` argument to :func:`cocotb.test`\ s,
+        or custom decorators which perform work before and after the tests
+        they decorate.
+    """
 
     def __init__(self, f):
         super(hook, self).__init__(f)
+        warnings.warn(
+            "Hooks have been deprecated. See the documentation for suggestions on alternatives.",
+            DeprecationWarning, stacklevel=2)
         self.im_hook = True
         self.name = self._func.__name__
 
@@ -485,11 +498,14 @@ class test(coroutine, metaclass=_decorator_helper):
                 Test timeout is intended for protection against deadlock.
                 Users should use :class:`~cocotb.triggers.with_timeout` if they require a
                 more general-purpose timeout mechanism.
-        timeout_unit (str or None, optional):
+        timeout_unit (str, optional):
             Units of timeout_time, accepts any units that :class:`~cocotb.triggers.Timer` does.
 
             .. versionadded:: 1.3
-        expect_fail (bool, optional):
+
+            .. deprecated:: 1.5
+                Using None as the the *timeout_unit* argument is deprecated, use ``'step'`` instead.
+         expect_fail (bool, optional):
             Don't mark the result as a failure if the test fails.
         expect_error (bool or exception type or tuple of exception types, optional):
             If ``True``, consider this test passing if it raises *any* :class:`Exception`, and failing if it does not.
@@ -518,10 +534,15 @@ class test(coroutine, metaclass=_decorator_helper):
 
     _id_count = 0  # used by the RegressionManager to sort tests in definition order
 
-    def __init__(self, f, timeout_time=None, timeout_unit=None,
+    def __init__(self, f, timeout_time=None, timeout_unit="step",
                  expect_fail=False, expect_error=False,
                  skip=False, stage=None):
 
+        if timeout_unit is None:
+            warnings.warn(
+                'Using timeout_unit=None is deprecated, use timeout_unit="step" instead.',
+                DeprecationWarning, stacklevel=2)
+            timeout_unit="step"  # don't propagate deprecated value
         self._id = self._id_count
         type(self)._id_count += 1
 

@@ -263,10 +263,13 @@ Advanced Microcontroller Bus Architecture.
 
 .. currentmodule:: cocotb.drivers.amba
 
-.. autoclass:: AXI4LiteMaster
+.. autoclass:: AXI4Master
     :members:
     :member-order: bysource
 
+.. autoclass:: AXI4LiteMaster
+    :members:
+    :member-order: bysource
 
 .. autoclass:: AXI4Slave
     :members:
@@ -368,6 +371,8 @@ Other Runtime Information
 .. autodata:: cocotb.plusargs
 
 .. autodata:: cocotb.LANGUAGE
+
+.. autodata:: cocotb.top
 
 
 Signal Tracer for WaveDrom

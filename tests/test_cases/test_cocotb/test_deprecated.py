@@ -16,7 +16,7 @@ def assert_deprecated(warning_category=DeprecationWarning):
             warnings.simplefilter("always")
             yield warns  # note: not a cocotb yield, but a contextlib one!
     finally:
-        assert len(warns) == 1
+        assert len(warns) >= 1
         msg = "Expected {}".format(warning_category.__qualname__)
         assert issubclass(warns[0].category, warning_category), msg
 
@@ -78,3 +78,31 @@ async def test_raise_error_deprecated(dut):
     with assert_deprecated():
         with assert_raises(cocotb.result.TestError):
             cocotb.result.raise_error(cocotb.triggers.Timer(1), "A test exception")
+
+
+@cocotb.test()
+async def test_hook_deprecated(_):
+    async def example():
+        pass
+    with assert_deprecated():
+        cocotb.hook()(example)
+
+
+@cocotb.test()
+async def test_handle_compat_mapping(dut):
+    """
+    Test DeprecationWarnings for _compat_mapping.
+
+    Note that these only warn once per attribute.
+    """
+    # log
+    with assert_deprecated():
+        dut.log.info("'log' is deprecated")
+    # name
+    with assert_deprecated():
+        dut.name = "myname"
+    assert dut.name == "myname"
+    # fullname
+    with assert_deprecated():
+        dut.fullname = "myfullname"
+    assert dut.fullname == "myfullname"

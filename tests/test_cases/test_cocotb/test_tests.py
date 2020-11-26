@@ -15,39 +15,34 @@ from common import clock_gen
 
 
 @cocotb.test(expect_error=True)
-def test_syntax_error(dut):
+async def test_syntax_error(dut):
     """Syntax error in the test"""
-    yield clock_gen(dut.clk)
+    await clock_gen(dut.clk)
     fail  # noqa
 
 
 @cocotb.test()
-def test_tests_are_tests(dut):
+async def test_tests_are_tests(dut):
     """
     Test that things annotated with cocotb.test are tests
     """
-    yield Timer(1)
-
     assert isinstance(test_tests_are_tests, cocotb.test)
 
 
 # just to be sure...
 @cocotb.test(expect_fail=True)
 async def test_async_test_can_fail(dut):
-    await Timer(1)
     raise TestFailure
 
 
 @cocotb.test()
-def test_immediate_test(dut):
+async def test_immediate_test(dut):
     """ Test that tests can return immediately """
     return
-    yield
 
 
 @cocotb.test(expect_fail=True)
-def test_assertion_is_failure(dut):
-    yield Timer(1)
+async def test_assertion_is_failure(dut):
     assert False
 
 
@@ -56,31 +51,29 @@ class MyException(Exception):
 
 
 @cocotb.test(expect_error=MyException)
-def test_expect_particular_exception(dut):
-    yield Timer(1)
+async def test_expect_particular_exception(dut):
     raise MyException()
 
 
 @cocotb.test(expect_error=(MyException, ValueError))
-def test_expect_exception_list(dut):
-    yield Timer(1)
+async def test_expect_exception_list(dut):
     raise MyException()
 
 
 @cocotb.test(expect_error=cocotb.result.SimTimeoutError, timeout_time=1, timeout_unit='ns')
-def test_timeout_testdec_fail(dut):
-    yield Timer(10, 'ns')
+async def test_timeout_testdec_fail(dut):
+    await Timer(10, 'ns')
 
 
 @cocotb.test(timeout_time=100, timeout_unit='ns')
-def test_timeout_testdec_pass(dut):
-    yield Timer(10, 'ns')
+async def test_timeout_testdec_pass(dut):
+    await Timer(10, 'ns')
 
 
 @cocotb.test(timeout_time=10, timeout_unit='ns')
-def test_timeout_testdec_simultaneous(dut):
+async def test_timeout_testdec_simultaneous(dut):
     try:
-        yield cocotb.triggers.with_timeout(Timer(1, 'ns'), timeout_time=1, timeout_unit='ns')
+        await cocotb.triggers.with_timeout(Timer(1, 'ns'), timeout_time=1, timeout_unit='ns')
     except cocotb.result.SimTimeoutError:
         pass
     else:

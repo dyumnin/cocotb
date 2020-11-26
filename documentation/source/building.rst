@@ -45,6 +45,9 @@ Cocotb
     Use this to indicate the instance in the hierarchy to use as the :term:`DUT`.
     If this isn't defined then the first root instance is used.
 
+    The DUT is available in cocotb tests as a Python object at :data:`cocotb.top`;
+    and is also passed to all cocotb tests as the :ref:`first and only parameter <quickstart_creating_a_test>`.
+
 .. envvar:: RANDOM_SEED
 
     Seed the Python random module to recreate a previous test stimulus.
@@ -127,17 +130,6 @@ Cocotb
 
     This needs the :mod:`cherrypy` and :mod:`dowser` Python modules installed.
 
-.. envvar:: COCOTB_PY_DIR
-
-    Path to the directory containing the cocotb Python package in the :file:`cocotb` subdirectory;
-    for cocotb-internal use.
-
-.. envvar:: COCOTB_SHARE_DIR
-
-    Path to the directory containing the cocotb Makefiles and simulator libraries in the subdirectories
-    :file:`lib`, :file:`include`, and :file:`makefiles`;
-    for cocotb-internal use.
-
 
 Regression Manager
 ~~~~~~~~~~~~~~~~~~
@@ -175,6 +167,9 @@ Regression Manager
 
     A comma-separated list of modules that should be executed before the first test.
     You can also use the :class:`cocotb.hook` decorator to mark a function to be run before test code.
+
+    .. deprecated:: 1.5
+        :class:`cocotb.hook` is deprecated, and in the future this variable will be ignored.
 
 
 Scheduler
@@ -325,6 +320,27 @@ and
 ..
    `CXXFLAGS`, `LDLIBS` are not supported by distutils/pip
 
+
+Internal Variables
+------------------
+
+The following variables are used for cocotb internals.
+They may change at any time, and users should not rely on them.
+
+.. envvar:: COCOTB_PY_DIR
+
+    Path to the directory containing the cocotb Python package in the :file:`cocotb` subdirectory.
+
+.. envvar:: COCOTB_SHARE_DIR
+
+    Path to the directory containing the cocotb Makefiles and simulator libraries in the subdirectories
+    :file:`lib`, :file:`include`, and :file:`makefiles`.
+
+.. envvar:: COCOTB_LIBRARY_COVERAGE
+
+   Enable code coverage collection for cocotb internals.
+   When set, a file :file:`.coverage.cocotb` will be written which contains statistics about the code coverage.
+   This is mainly useful for cocotb's own Continuous Integration setup.
 
 ..
    TODO
